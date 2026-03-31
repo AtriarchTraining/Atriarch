@@ -54,3 +54,49 @@ void loop() {
   handleIncoming();
   handleState();
 }
+
+void sendEvent(int eventType, int param1, int param2) {
+  int payload[MSG_SIZE] = {eventType, param1, param2};
+  RF24NetworkHeader header(00);  // send to master node
+  network.write(header, &payload, sizeof(payload));
+}
+
+void handleIncoming() {
+  while (network.available()) {
+    RF24NetworkHeader header;
+    int payload[MSG_SIZE] = {0, 0, 0};
+    network.read(header, &payload, sizeof(payload));
+
+    int cmd = payload[0];
+
+    switch (cmd) {
+      case CMD_PING:
+        sendEvent(EVT_PONG, NODE_ADDRESS, 0);
+        break;
+
+      case CMD_IDENTIFY:
+        state = STATE_IDENTIFYING;
+        identifyStart = millis();
+        identifyFlashCount = 0;
+        identifyLedOn = false;
+        break;
+
+      case CMD_ACTIVATE:
+        requiredHits = payload[1];
+        hitCount = 0;
+        activationTime = millis();
+        if (payload[2] == COLOR_NOSHOOT) {
+          state = STATE_ACTIVE_NOSHOOT;
+        } else {
+          state = STATE_ACTIVE_SHOOT;
+        }
+        setLedGreen();
+        break;
+
+      case CMD_DEACTIVATE:
+        state = STATE_IDLE;
+        setLedOff();
+        break;
+    }
+  }
+}
