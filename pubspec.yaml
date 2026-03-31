@@ -1,5 +1,5 @@
 name: atriarch
-description: ESP32 BLE Spring Test App for iOS and Android
+description: Atriarch - Wireless Reactive Target Training System
 publish_to: "none"
 
 environment:
@@ -13,6 +13,7 @@ dependencies:
   share_plus: ^9.0.0
   syncfusion_flutter_xlsio: ^25.1.0
   intl: ^0.19.0
+  provider: ^6.1.0
 
 dev_dependencies:
   flutter_test:
