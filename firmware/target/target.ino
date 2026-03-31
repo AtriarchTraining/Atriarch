@@ -142,3 +142,72 @@ void handleIncoming() {
     }
   }
 }
+
+void handleState() {
+  unsigned long now = millis();
+
+  switch (state) {
+    case STATE_IDLE:
+      // Nothing to do — waiting for commands
+      break;
+
+    case STATE_ACTIVE_SHOOT:
+      if (checkVibration()) {
+        hitCount++;
+        unsigned long elapsed = now - activationTime;
+        if (hitCount >= requiredHits) {
+          sendEvent(EVT_COMPLETE, hitCount, (int)(elapsed & 0x7FFF));
+          setLedOff();
+          cooldownStart = now;
+          state = STATE_COOLDOWN;
+        } else {
+          sendEvent(EVT_HIT, hitCount, (int)(elapsed & 0x7FFF));
+        }
+      }
+      break;
+
+    case STATE_ACTIVE_NOSHOOT:
+      if (checkVibration()) {
+        unsigned long elapsed = now - activationTime;
+        setLedRed();
+        sendEvent(EVT_NOSHOOT_HIT, (int)(elapsed & 0x7FFF), 0);
+      }
+      break;
+
+    case STATE_COOLDOWN:
+      if (now - cooldownStart >= COOLDOWN_MS) {
+        state = STATE_IDLE;
+      } else if (checkVibration()) {
+        unsigned long elapsed = now - activationTime;
+        setLedYellow();
+        sendEvent(EVT_LATE_HIT, (int)(elapsed & 0x7FFF), 0);
+        delay(LATE_HIT_FLASH_MS);
+        setLedOff();
+      }
+      break;
+
+    case STATE_IDENTIFYING:
+      handleIdentify(now);
+      break;
+  }
+}
+
+void handleIdentify(unsigned long now) {
+  unsigned long elapsed = now - identifyStart;
+  int flashPhase = elapsed / IDENTIFY_FLASH_MS;
+
+  if (flashPhase >= IDENTIFY_FLASHES * 2) {
+    setLedOff();
+    state = STATE_IDLE;
+    return;
+  }
+
+  bool shouldBeOn = (flashPhase % 2 == 0);
+  if (shouldBeOn && !identifyLedOn) {
+    setLedWhite();
+    identifyLedOn = true;
+  } else if (!shouldBeOn && identifyLedOn) {
+    setLedOff();
+    identifyLedOn = false;
+  }
+}
