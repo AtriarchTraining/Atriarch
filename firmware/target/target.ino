@@ -85,6 +85,18 @@ void setLedOff() {
   digitalWrite(RELAY_PIN, LOW);
 }
 
+bool checkVibration() {
+  long measurement = pulseIn(VIBRATION_PIN, HIGH, 1000); // 1ms timeout
+  if (measurement > VIB_THRESHOLD) {
+    unsigned long now = millis();
+    if (now - lastVibTime > VIB_DEBOUNCE_MS) {
+      lastVibTime = now;
+      return true;
+    }
+  }
+  return false;
+}
+
 void sendEvent(int eventType, int param1, int param2) {
   int payload[MSG_SIZE] = {eventType, param1, param2};
   RF24NetworkHeader header(00);  // send to master node
