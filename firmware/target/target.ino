@@ -55,6 +55,36 @@ void loop() {
   handleState();
 }
 
+void setLedGreen() {
+  fill_solid(leds, NUM_LEDS, CRGB::Green);
+  FastLED.show();
+  digitalWrite(RELAY_PIN, HIGH);
+}
+
+void setLedRed() {
+  fill_solid(leds, NUM_LEDS, CRGB::Red);
+  FastLED.show();
+  digitalWrite(RELAY_PIN, HIGH);
+}
+
+void setLedYellow() {
+  fill_solid(leds, NUM_LEDS, CRGB::Yellow);
+  FastLED.show();
+  digitalWrite(RELAY_PIN, HIGH);
+}
+
+void setLedWhite() {
+  fill_solid(leds, NUM_LEDS, CRGB::White);
+  FastLED.show();
+  digitalWrite(RELAY_PIN, HIGH);
+}
+
+void setLedOff() {
+  fill_solid(leds, NUM_LEDS, CRGB::Black);
+  FastLED.show();
+  digitalWrite(RELAY_PIN, LOW);
+}
+
 void sendEvent(int eventType, int param1, int param2) {
   int payload[MSG_SIZE] = {eventType, param1, param2};
   RF24NetworkHeader header(00);  // send to master node
