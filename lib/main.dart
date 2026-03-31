@@ -4,7 +4,6 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:atriarch/widgets.dart';
 import 'Screens/ProgramA.dart';
 import 'Screens/ProgramB.dart';
-import 'calculator.dart';
 
 void main() {
   runApp(FlutterBlueApp());
@@ -202,118 +201,6 @@ class _DeviceScreenState extends State<DeviceScreen> {
     super.dispose();
   }
 
-  void _showMeasureDialog() {
-    final machineIdCtrl = TextEditingController();
-    final brushTCtrl = TextEditingController();
-    final brushACtrl = TextEditingController();
-    final polesCtrl = TextEditingController();
-    final brushesPerPoleCtrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Measurement Setup'),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: machineIdCtrl,
-                  decoration: InputDecoration(labelText: 'Machine ID'),
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Required' : null,
-                ),
-                SizedBox(height: 8),
-                TextFormField(
-                  controller: brushTCtrl,
-                  decoration:
-                      InputDecoration(labelText: 'Brush Size (t) cm'),
-                  keyboardType:
-                      TextInputType.numberWithOptions(decimal: true),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
-                    if (double.tryParse(v) == null) return 'Enter a number';
-                    return null;
-                  },
-                ),
-                SizedBox(height: 8),
-                TextFormField(
-                  controller: brushACtrl,
-                  decoration:
-                      InputDecoration(labelText: 'Brush Size (a) cm'),
-                  keyboardType:
-                      TextInputType.numberWithOptions(decimal: true),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
-                    if (double.tryParse(v) == null) return 'Enter a number';
-                    return null;
-                  },
-                ),
-                SizedBox(height: 8),
-                TextFormField(
-                  controller: polesCtrl,
-                  decoration: InputDecoration(labelText: 'Number of Poles'),
-                  keyboardType: TextInputType.number,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
-                    final n = int.tryParse(v);
-                    if (n == null || n < 1 || n > 16) return '1-16';
-                    return null;
-                  },
-                ),
-                SizedBox(height: 8),
-                TextFormField(
-                  controller: brushesPerPoleCtrl,
-                  decoration:
-                      InputDecoration(labelText: 'Brushes per Pole'),
-                  keyboardType: TextInputType.number,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Required';
-                    final n = int.tryParse(v);
-                    if (n == null || n < 1 || n > 16) return '1-16';
-                    return null;
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(ctx);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CalculatorScreen(
-                      device: widget.device,
-                      chObj1: chObj1,
-                      MachineID: machineIdCtrl.text,
-                      brushSize_t: double.parse(brushTCtrl.text),
-                      brushSize_a: double.parse(brushACtrl.text),
-                      poles: double.parse(polesCtrl.text),
-                      brushesperpole:
-                          double.parse(brushesPerPoleCtrl.text),
-                    ),
-                  ),
-                );
-              }
-            },
-            child: Text('Start'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -398,13 +285,6 @@ class _DeviceScreenState extends State<DeviceScreen> {
                             ),
                           ),
                         ],
-                      ),
-                      SizedBox(height: 30),
-                      _buildMenuButton(
-                        label: "Measure",
-                        description: "Brush pressure measurement",
-                        onPressed: _showMeasureDialog,
-                        color: Colors.deepPurpleAccent[400]!,
                       ),
                       SizedBox(height: 30),
                     ],
