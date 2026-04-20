@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'state/app_state.dart';
+import 'theme/atriarch_theme.dart';
 import 'screens/device_discovery_screen.dart';
 
 void main() {
@@ -20,10 +21,7 @@ class AtriarchApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Atriarch',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
+      theme: buildAtriarchLightTheme(),
       home: StreamBuilder<BluetoothAdapterState>(
         stream: FlutterBluePlus.adapterState,
         initialData: BluetoothAdapterState.unknown,
@@ -43,14 +41,22 @@ class BluetoothOffScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    final tokens = context.atriarch;
+    return Scaffold(
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bluetooth_disabled, size: 100, color: Colors.grey),
-            SizedBox(height: 16),
-            Text('Please enable Bluetooth', style: TextStyle(fontSize: 18)),
+            Icon(
+              Icons.bluetooth_disabled,
+              size: 100,
+              color: tokens.statusOffline,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Please enable Bluetooth',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
           ],
         ),
       ),
