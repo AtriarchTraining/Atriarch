@@ -162,7 +162,7 @@ Material Symbols rounded, locked set:
 bluetooth, bluetooth_disabled, refresh, flash_on, gps_fixed,
 check_circle, warning, home, block, gpp_good, gpp_bad,
 ios_share, volume_up, photo_camera, groups, person,
-play_arrow, chevron_right, more_vert, edit, delete
+play_arrow, chevron_right, more_vert, edit, delete, settings
 ```
 
 New icons require updating this doc first.

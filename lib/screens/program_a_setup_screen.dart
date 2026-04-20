@@ -4,6 +4,7 @@ import '../state/app_state.dart';
 import '../models/drill_config.dart';
 import '../models/target_group.dart';
 import '../theme/atriarch_theme.dart';
+import '../theme/theme_controller.dart';
 import '../widgets/inc_dec.dart';
 import '../widgets/target_chip.dart';
 import 'drill_running_screen.dart';
@@ -41,6 +42,7 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<AppState>().addListener(_onPhaseChanged);
+      context.read<ThemeController>().setDrillContextActive(true);
     });
   }
 
@@ -49,6 +51,11 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     // context.read in dispose is fine for listener removal.
     try {
       context.read<AppState>().removeListener(_onPhaseChanged);
+    } catch (_) {
+      // Widget tree teardown — ignore.
+    }
+    try {
+      context.read<ThemeController>().setDrillContextActive(false);
     } catch (_) {
       // Widget tree teardown — ignore.
     }

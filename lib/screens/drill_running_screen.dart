@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
+import '../theme/theme_controller.dart';
 import '../widgets/drill_timer.dart';
 import 'results_screen.dart';
 
@@ -33,6 +34,11 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
 
     final state = context.read<AppState>();
     state.addListener(_checkDrillComplete);
+    // Brightness override rides LIGHT theme only while in drill/setup context.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<ThemeController>().setDrillContextActive(true);
+    });
   }
 
   @override
@@ -40,6 +46,11 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
     _breatheController.dispose();
     final state = context.read<AppState>();
     state.removeListener(_checkDrillComplete);
+    try {
+      context.read<ThemeController>().setDrillContextActive(false);
+    } catch (_) {
+      // Teardown — ignore.
+    }
     super.dispose();
   }
 

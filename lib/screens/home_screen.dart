@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import 'device_discovery_screen.dart';
 import 'program_a_setup_screen.dart';
 import 'program_b_setup_screen.dart';
+import 'settings_screen.dart';
 
 // Implements addendum §1 Home screen spec: persistent connection banner +
 // 3 tappable rows (Target Setup, Program A, Program B). Style tokens land
@@ -16,7 +17,19 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Atriarch')),
+      appBar: AppBar(
+        title: const Text('Atriarch'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           const _ConnectionBanner(),

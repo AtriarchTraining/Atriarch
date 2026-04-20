@@ -7,6 +7,7 @@ import 'data/preferences_repository.dart';
 import 'data/session_repository.dart';
 import 'state/app_state.dart';
 import 'theme/atriarch_theme.dart';
+import 'theme/theme_controller.dart';
 import 'screens/device_discovery_screen.dart';
 
 Future<void> main() async {
@@ -25,13 +26,21 @@ Future<void> main() async {
   // On cold start, begin (or roll over) the current session per §4.E.
   await sessions.beginSessionIfNeeded();
 
+  final themeController = ThemeController(preferences: preferences);
+  await themeController.init();
+
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => AppState(
-        preferences: preferences,
-        sessions: sessions,
-        drillLogs: drillLogs,
-      ),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => AppState(
+            preferences: preferences,
+            sessions: sessions,
+            drillLogs: drillLogs,
+          ),
+        ),
+        ChangeNotifierProvider<ThemeController>.value(value: themeController),
+      ],
       child: const AtriarchApp(),
     ),
   );
@@ -42,19 +51,33 @@ class AtriarchApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Atriarch',
-      theme: buildAtriarchLightTheme(),
-      home: StreamBuilder<BluetoothAdapterState>(
-        stream: FlutterBluePlus.adapterState,
-        initialData: BluetoothAdapterState.unknown,
-        builder: (context, snapshot) {
-          if (snapshot.data == BluetoothAdapterState.on) {
-            return const DeviceDiscoveryScreen();
-          }
-          return const BluetoothOffScreen();
-        },
-      ),
+    return Consumer<ThemeController>(
+      builder: (context, ctrl, _) {
+        // Respect Reduce Motion for the theme cross-fade.
+        final disableAnimations =
+            MediaQueryData.fromView(View.of(context)).disableAnimations;
+        final duration = disableAnimations
+            ? Duration.zero
+            : const Duration(milliseconds: 400);
+        return MaterialApp(
+          title: 'Atriarch',
+          theme: buildAtriarchLightTheme(),
+          darkTheme: buildAtriarchDarkTheme(),
+          themeMode: ctrl.themeMode,
+          themeAnimationDuration: duration,
+          themeAnimationCurve: Curves.easeInOut,
+          home: StreamBuilder<BluetoothAdapterState>(
+            stream: FlutterBluePlus.adapterState,
+            initialData: BluetoothAdapterState.unknown,
+            builder: (context, snapshot) {
+              if (snapshot.data == BluetoothAdapterState.on) {
+                return const DeviceDiscoveryScreen();
+              }
+              return const BluetoothOffScreen();
+            },
+          ),
+        );
+      },
     );
   }
 }

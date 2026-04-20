@@ -1,5 +1,5 @@
-// Atriarch design tokens + light theme (Gate 1).
-// DARK theme + ambient-light auto-toggle land in Gate 2.
+// Atriarch design tokens + light/dark themes.
+// Ambient-light auto-toggle lives in lib/theme/theme_controller.dart (Gate 2 #12).
 // See DESIGN.md at repo root for the full spec.
 
 import 'package:flutter/material.dart';
@@ -212,9 +212,20 @@ extension AtriarchThemeContext on BuildContext {
       Theme.of(this).extension<AtriarchTokens>() ?? AtriarchTokens.light;
 }
 
-ThemeData buildAtriarchLightTheme() {
-  const tokens = AtriarchTokens.light;
+ThemeData buildAtriarchLightTheme() =>
+    _buildAtriarchTheme(tokens: AtriarchTokens.light, brightness: Brightness.light);
 
+ThemeData buildAtriarchDarkTheme() =>
+    _buildAtriarchTheme(tokens: AtriarchTokens.dark, brightness: Brightness.dark);
+
+/// Shared builder for both light and dark themes. Typography scale, spacing,
+/// radii, and component shapes are identical — only the source of colors
+/// (tokens) and the [Brightness] flag differ. Keeping this DRY means a tweak
+/// to e.g. InputDecoration rounding applies to both themes atomically.
+ThemeData _buildAtriarchTheme({
+  required AtriarchTokens tokens,
+  required Brightness brightness,
+}) {
   final sansTheme = GoogleFonts.interTightTextTheme();
   final mono = GoogleFonts.jetBrainsMono;
 
@@ -278,7 +289,7 @@ ThemeData buildAtriarchLightTheme() {
   );
 
   final colorScheme = ColorScheme(
-    brightness: Brightness.light,
+    brightness: brightness,
     primary: tokens.textPrimary,
     onPrimary: tokens.bgBase,
     secondary: tokens.statusArmed,
@@ -294,7 +305,7 @@ ThemeData buildAtriarchLightTheme() {
 
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.light,
+    brightness: brightness,
     colorScheme: colorScheme,
     scaffoldBackgroundColor: tokens.bgBase,
     textTheme: textTheme,
@@ -398,6 +409,6 @@ ThemeData buildAtriarchLightTheme() {
       ),
       behavior: SnackBarBehavior.floating,
     ),
-    extensions: const [tokens],
+    extensions: [tokens],
   );
 }
