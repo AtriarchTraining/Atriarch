@@ -21,7 +21,9 @@ class AtriarchApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Atriarch',
-      theme: buildAtriarchLightTheme(),
+      theme: buildAtriarchDarkTheme(),
+      darkTheme: buildAtriarchDarkTheme(),
+      themeMode: ThemeMode.dark,
       home: StreamBuilder<BluetoothAdapterState>(
         stream: FlutterBluePlus.adapterState,
         initialData: BluetoothAdapterState.unknown,

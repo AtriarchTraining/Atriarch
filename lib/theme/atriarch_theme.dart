@@ -200,11 +200,24 @@ class AtriarchSpacing {
 }
 
 class AtriarchRadius {
-  static const double sm = 4;
-  static const double md = 8;
-  static const double lg = 12;
+  static const double sm = 0;
+  static const double md = 0;
+  static const double lg = 0;
+  static const double full = 9999;
 
   const AtriarchRadius._();
+}
+
+class AtriarchText {
+  static TextStyle labelTiny({Color? color}) => GoogleFonts.spaceGrotesk(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 2.0,
+        color: color,
+        height: 1.2,
+      );
+
+  const AtriarchText._();
 }
 
 extension AtriarchThemeContext on BuildContext {
@@ -395,6 +408,209 @@ ThemeData buildAtriarchLightTheme() {
       ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AtriarchRadius.md),
+      ),
+      behavior: SnackBarBehavior.floating,
+    ),
+    extensions: const [tokens],
+  );
+}
+
+ThemeData buildAtriarchDarkTheme() {
+  const tokens = AtriarchTokens.dark;
+
+  final sansTheme = GoogleFonts.spaceGroteskTextTheme();
+  final mono = GoogleFonts.jetBrainsMono;
+
+  final textTheme = sansTheme.copyWith(
+    displayLarge: mono(
+      fontSize: 96,
+      fontWeight: FontWeight.w700,
+      color: tokens.textPrimary,
+      letterSpacing: -2,
+    ),
+    displayMedium: mono(
+      fontSize: 48,
+      fontWeight: FontWeight.w700,
+      color: tokens.textPrimary,
+      letterSpacing: -1,
+    ),
+    displaySmall: mono(
+      fontSize: 36,
+      fontWeight: FontWeight.w700,
+      color: tokens.textPrimary,
+      letterSpacing: -1,
+    ),
+    headlineMedium: GoogleFonts.spaceGrotesk(
+      fontSize: 28,
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.5,
+      color: tokens.textPrimary,
+    ),
+    titleLarge: GoogleFonts.spaceGrotesk(
+      fontSize: 20,
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.3,
+      color: tokens.textPrimary,
+    ),
+    titleMedium: GoogleFonts.spaceGrotesk(
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
+      color: tokens.textPrimary,
+    ),
+    bodyLarge: GoogleFonts.spaceGrotesk(
+      fontSize: 16,
+      fontWeight: FontWeight.w500,
+      color: tokens.textPrimary,
+    ),
+    bodyMedium: GoogleFonts.spaceGrotesk(
+      fontSize: 14,
+      fontWeight: FontWeight.w500,
+      color: tokens.textPrimary,
+    ),
+    bodySmall: GoogleFonts.spaceGrotesk(
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+      color: tokens.textSecondary,
+    ),
+    labelLarge: GoogleFonts.spaceGrotesk(
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 2.0,
+      color: tokens.textPrimary,
+    ),
+    labelMedium: GoogleFonts.spaceGrotesk(
+      fontSize: 12,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 2.4,
+      color: tokens.textPrimary,
+    ),
+    labelSmall: GoogleFonts.spaceGrotesk(
+      fontSize: 10,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 2.0,
+      color: tokens.textTertiary,
+    ),
+  );
+
+  final colorScheme = ColorScheme(
+    brightness: Brightness.dark,
+    primary: tokens.statusHit,
+    onPrimary: tokens.bgBase,
+    secondary: tokens.statusLive,
+    onSecondary: tokens.bgBase,
+    error: tokens.statusViolation,
+    onError: tokens.bgBase,
+    surface: tokens.bgBase,
+    onSurface: tokens.textPrimary,
+    surfaceContainer: tokens.bgCard,
+    surfaceContainerHigh: tokens.bgElevated,
+    outline: tokens.border,
+  );
+
+  return ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.dark,
+    colorScheme: colorScheme,
+    scaffoldBackgroundColor: tokens.bgBase,
+    textTheme: textTheme,
+    appBarTheme: AppBarTheme(
+      backgroundColor: tokens.bgElevated,
+      foregroundColor: tokens.statusHit,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      titleTextStyle: GoogleFonts.spaceGrotesk(
+        fontSize: 20,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 3.2,
+        color: tokens.statusHit,
+      ),
+    ),
+    dividerTheme: DividerThemeData(
+      color: tokens.border,
+      space: 1,
+      thickness: 1,
+    ),
+    cardTheme: CardThemeData(
+      color: tokens.bgCard,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: tokens.statusHit,
+        foregroundColor: tokens.bgBase,
+        minimumSize: const Size(44, 56),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.zero,
+        ),
+        textStyle: GoogleFonts.spaceGrotesk(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.6,
+        ),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: tokens.textPrimary,
+        side: BorderSide(color: tokens.border),
+        minimumSize: const Size(44, 44),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.zero,
+        ),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        minimumSize: const Size(44, 44),
+        foregroundColor: tokens.textPrimary,
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: tokens.bgCard,
+      side: BorderSide(color: tokens.border),
+      labelStyle: GoogleFonts.spaceGrotesk(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        color: tokens.textPrimary,
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: tokens.bgCard,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: tokens.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: tokens.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: tokens.statusHit, width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: AtriarchSpacing.lg,
+        vertical: AtriarchSpacing.md,
+      ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: tokens.bgElevated,
+      contentTextStyle: GoogleFonts.spaceGrotesk(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        color: tokens.textPrimary,
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
       ),
       behavior: SnackBarBehavior.floating,
     ),
