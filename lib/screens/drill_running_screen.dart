@@ -22,7 +22,6 @@ class DrillRunningScreen extends StatefulWidget {
 class _DrillRunningScreenState extends State<DrillRunningScreen>
     with TickerProviderStateMixin {
   late final AnimationController _breatheController;
-  bool _stopping = false;
 
   @override
   void initState() {
@@ -45,9 +44,9 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
   }
 
   void _checkDrillComplete() {
+    if (!mounted) return;
     final state = context.read<AppState>();
-    final session = state.currentSession;
-    if (session != null && !session.isRunning) {
+    if (state.phase == DrillPhase.finished) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const ResultsScreen()),
@@ -56,10 +55,15 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
   }
 
   Future<void> _onStopConfirmed() async {
-    if (_stopping) return;
-    setState(() => _stopping = true);
     final state = context.read<AppState>();
+    if (state.phase == DrillPhase.stopping ||
+        state.phase == DrillPhase.finished) {
+      return;
+    }
     await state.stopDrill();
+    // Gate 1 fallback: if STOP_ACK isn't landed on firmware yet, force the
+    // nav after 2s. AppState.stopDrill itself has a 5s aggregate fallback;
+    // this 2s belt-and-suspenders is the UI-layer guard we already had.
     Future.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
       state.forceDrillFinished();
@@ -71,39 +75,44 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
     final tokens = context.atriarch;
     final reduceMotion = MediaQuery.of(context).disableAnimations;
 
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _DrillActiveLabel(
-                  color: tokens.statusArmed,
-                  reduceMotion: reduceMotion,
-                  breathe: _breatheController,
+    return Consumer<AppState>(
+      builder: (context, state, _) {
+        final stopping = state.phase == DrillPhase.stopping;
+        return PopScope(
+          canPop: false,
+          child: Scaffold(
+            body: SafeArea(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _DrillActiveLabel(
+                      color: tokens.statusArmed,
+                      reduceMotion: reduceMotion,
+                      breathe: _breatheController,
+                    ),
+                    const SizedBox(height: AtriarchSpacing.xxxl),
+                    const DrillTimer(),
+                    const SizedBox(height: AtriarchSpacing.hero),
+                    _StopButton(
+                      onStop: _onStopConfirmed,
+                      isStopping: stopping,
+                    ),
+                    const SizedBox(height: AtriarchSpacing.lg),
+                    Text(
+                      stopping ? 'Ending drill…' : 'Press and hold to stop',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: tokens.textTertiary,
+                            letterSpacing: 0.8,
+                          ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: AtriarchSpacing.xxxl),
-                const DrillTimer(),
-                const SizedBox(height: AtriarchSpacing.hero),
-                _StopButton(
-                  onStop: _onStopConfirmed,
-                  isStopping: _stopping,
-                ),
-                const SizedBox(height: AtriarchSpacing.lg),
-                Text(
-                  _stopping ? 'Ending drill…' : 'Press and hold to stop',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: tokens.textTertiary,
-                        letterSpacing: 0.8,
-                      ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

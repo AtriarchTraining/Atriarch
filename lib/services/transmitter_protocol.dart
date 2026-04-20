@@ -5,6 +5,7 @@ class TransmitterProtocol {
   static String encodeDiscovery() => 'DISC/';
   static String encodeIdentify(int targetId) => 'IDENT/$targetId/';
   static String encodeStop() => 'STOP/';
+  static String encodeSnap() => 'SNAP/';
 
   static String encodeDrillStart(DrillConfig config) {
     if (config.programType == ProgramType.programA) {
@@ -66,6 +67,38 @@ class TransmitterProtocol {
     }
     if (msg == 'DDONE/') return DiscoveryDone();
 
+    if (msg == 'STOP_ACK/') return StopAck();
+
+    // SNAP_REPLY/<running>/<activeIds>/
+    // running   = "0" | "1"
+    // activeIds = comma-separated int list OR "0" sentinel meaning empty.
+    if (msg.startsWith('SNAP_REPLY/')) {
+      final parts = msg.split('/');
+      if (parts.length < 3) return null;
+      final running = parts[1] == '1';
+      final idsRaw = parts[2];
+      final List<int> ids;
+      if (idsRaw == '0' || idsRaw.isEmpty) {
+        ids = const [];
+      } else {
+        ids = idsRaw
+            .split(',')
+            .map((s) => int.tryParse(s.trim()))
+            .whereType<int>()
+            .toList();
+      }
+      return SnapReply(running, ids);
+    }
+
+    // Specialize ERR/unreachable/<id>/ BEFORE the generic ERR/ branch.
+    if (msg.startsWith('ERR/unreachable/')) {
+      final parts = msg.split('/');
+      if (parts.length >= 3) {
+        final id = int.tryParse(parts[2]);
+        if (id != null) return UnreachableTarget(id);
+      }
+    }
+
     if (msg.startsWith('ACT/')) {
       final parts = msg.split('/');
       return SessionEvent(
@@ -124,3 +157,16 @@ class DiscoveredTarget {
 }
 
 class DiscoveryDone {}
+
+class StopAck {}
+
+class UnreachableTarget {
+  final int id;
+  UnreachableTarget(this.id);
+}
+
+class SnapReply {
+  final bool running;
+  final List<int> activeIds;
+  SnapReply(this.running, this.activeIds);
+}

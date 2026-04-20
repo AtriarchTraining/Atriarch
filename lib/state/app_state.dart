@@ -7,6 +7,24 @@ import '../models/drill_config.dart';
 import '../models/drill_session.dart';
 import '../models/session_event.dart';
 
+/// Drill phase machine (Gate 1 §1.3 / Addendum §3 UI state sync).
+///
+/// Transitions:
+///   idle -> arming        (startDrill called, START sent)
+///   arming -> running     (first ACT/ arrives)
+///   arming -> armingFailed(3s arming timeout with no ACT)
+///   running -> stopping   (stopDrill called, STOP sent)
+///   stopping -> finished  (STOP_ACK/ OR 5s aggregate timeout)
+///   running -> finished   (FIN/ arrives without STOP)
+enum DrillPhase {
+  idle,
+  arming,
+  running,
+  stopping,
+  finished,
+  armingFailed,
+}
+
 class AppState extends ChangeNotifier {
   final BleService bleService = BleService();
 
@@ -15,10 +33,59 @@ class AppState extends ChangeNotifier {
 
   DrillSession? currentSession;
 
+  DrillPhase _phase = DrillPhase.idle;
+  DrillPhase get phase => _phase;
+
+  /// Targets that dropped out mid-drill (transmitter EVT_ACK timeout ->
+  /// ERR/unreachable/<id>/). Cleared on each new drill start.
+  final Set<int> unreachableTargets = {};
+
   StreamSubscription<String>? _dataSub;
+  StreamSubscription<ConnectionStatus>? _statusSub;
+
+  Timer? _armingTimeout;
+  Timer? _stoppingTimeout;
+
+  ConnectionStatus _lastStatus = ConnectionStatus.disconnected;
 
   AppState() {
     _dataSub = bleService.incomingData.listen(_handleIncomingData);
+    _statusSub = bleService.connectionStatus.listen(_handleConnectionStatus);
+  }
+
+  void _setPhase(DrillPhase next) {
+    if (_phase == next) return;
+    _phase = next;
+    notifyListeners();
+  }
+
+  void _handleConnectionStatus(ConnectionStatus status) {
+    final prev = _lastStatus;
+    _lastStatus = status;
+
+    // Reconcile on reconnect: if we were previously reconnecting and a drill
+    // session is live, ask the transmitter for a snapshot. The SnapReply
+    // handler below will flip phase based on `running`.
+    final wasReconnecting = prev == ConnectionStatus.reconnecting;
+    final isNowConnected = status == ConnectionStatus.connected;
+    final drillLive = _phase == DrillPhase.arming ||
+        _phase == DrillPhase.running ||
+        _phase == DrillPhase.stopping;
+
+    if (wasReconnecting && isNowConnected && drillLive) {
+      // Fire-and-forget; errors are surfaced via other channels.
+      // Note: BleService also sends SNAP/ itself on reconnect; this is a
+      // belt-and-suspenders safeguard in case BleService's auto-SNAP fails.
+      unawaited(_sendSnap());
+    }
+  }
+
+  Future<void> _sendSnap() async {
+    try {
+      await bleService.write(TransmitterProtocol.encodeSnap());
+    } catch (_) {
+      // Best-effort; no phase change on failure.
+    }
   }
 
   void _handleIncomingData(String message) {
@@ -41,9 +108,60 @@ class AppState extends ChangeNotifier {
       return;
     }
 
-    if (decoded is SessionEvent && currentSession != null) {
-      currentSession!.addEvent(decoded);
+    if (decoded is StopAck) {
+      _stoppingTimeout?.cancel();
+      _stoppingTimeout = null;
+      // Mark the session finished locally (mirrors FIN/ semantics).
+      final session = currentSession;
+      if (session != null && session.isRunning) {
+        session.addEvent(SessionEvent(type: EventType.drillFinished));
+      }
+      _setPhase(DrillPhase.finished);
+      return;
+    }
+
+    if (decoded is UnreachableTarget) {
+      unreachableTargets.add(decoded.id);
       notifyListeners();
+      return;
+    }
+
+    if (decoded is SnapReply) {
+      // Reconcile drill-phase after reconnect.
+      if (decoded.running) {
+        if (_phase == DrillPhase.arming || _phase == DrillPhase.stopping) {
+          _setPhase(DrillPhase.running);
+        }
+      } else {
+        // Transmitter says no drill is running. Close out locally.
+        final session = currentSession;
+        if (session != null && session.isRunning) {
+          session.addEvent(SessionEvent(type: EventType.drillFinished));
+        }
+        _armingTimeout?.cancel();
+        _stoppingTimeout?.cancel();
+        _setPhase(DrillPhase.finished);
+      }
+      return;
+    }
+
+    if (decoded is SessionEvent) {
+      // First ACT/ during arming unblocks the START button -> running.
+      if (decoded.type == EventType.targetActivated &&
+          _phase == DrillPhase.arming) {
+        _armingTimeout?.cancel();
+        _armingTimeout = null;
+        _setPhase(DrillPhase.running);
+      }
+      if (currentSession != null) {
+        currentSession!.addEvent(decoded);
+        if (decoded.type == EventType.drillFinished) {
+          _armingTimeout?.cancel();
+          _stoppingTimeout?.cancel();
+          _setPhase(DrillPhase.finished);
+        }
+        notifyListeners();
+      }
     }
   }
 
@@ -60,29 +178,69 @@ class AppState extends ChangeNotifier {
     await bleService.write(TransmitterProtocol.encodeIdentify(targetId));
   }
 
+  /// Reset phase to idle. Call when navigating into a setup screen so a
+  /// Retry after armingFailed starts from a clean state.
+  void resetDrillPhase() {
+    _armingTimeout?.cancel();
+    _stoppingTimeout?.cancel();
+    _armingTimeout = null;
+    _stoppingTimeout = null;
+    _setPhase(DrillPhase.idle);
+  }
+
   Future<void> startDrill(DrillConfig config) async {
     currentSession = DrillSession(config: config);
-    notifyListeners();
+    unreachableTargets.clear();
+    _setPhase(DrillPhase.arming);
+
+    _armingTimeout?.cancel();
+    _armingTimeout = Timer(const Duration(seconds: 3), () {
+      if (_phase == DrillPhase.arming) {
+        _setPhase(DrillPhase.armingFailed);
+      }
+    });
+
     await bleService.write(TransmitterProtocol.encodeDrillStart(config));
   }
 
   Future<void> stopDrill() async {
+    if (_phase == DrillPhase.running || _phase == DrillPhase.arming) {
+      _setPhase(DrillPhase.stopping);
+      _stoppingTimeout?.cancel();
+      _stoppingTimeout = Timer(const Duration(seconds: 5), () {
+        if (_phase == DrillPhase.stopping) {
+          // Target-side safe-stop (10s no-RF auto-lower) is the real safety
+          // net; the app just moves the user to Results.
+          final session = currentSession;
+          if (session != null && session.isRunning) {
+            session.addEvent(SessionEvent(type: EventType.drillFinished));
+          }
+          _setPhase(DrillPhase.finished);
+        }
+      });
+    }
     await bleService.write(TransmitterProtocol.encodeStop());
   }
 
-  // Fallback used when the transmitter doesn't echo FIN/ after a STOP —
-  // typically on a flaky BLE link or during Gate 1 before STOP_ACK lands.
-  // Triggered by drill_running_screen after a 2s grace window.
+  // Fallback used by the 2s-nav-fallback in drill_running_screen for the
+  // pre-STOP_ACK world. Safe to call in either world — sets phase=finished
+  // and closes out the session. Idempotent.
   void forceDrillFinished() {
     final session = currentSession;
-    if (session == null || !session.isRunning) return;
-    session.addEvent(SessionEvent(type: EventType.drillFinished));
-    notifyListeners();
+    if (session != null && session.isRunning) {
+      session.addEvent(SessionEvent(type: EventType.drillFinished));
+    }
+    _armingTimeout?.cancel();
+    _stoppingTimeout?.cancel();
+    _setPhase(DrillPhase.finished);
   }
 
   @override
   void dispose() {
+    _armingTimeout?.cancel();
+    _stoppingTimeout?.cancel();
     _dataSub?.cancel();
+    _statusSub?.cancel();
     bleService.dispose();
     super.dispose();
   }

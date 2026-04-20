@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../models/drill_config.dart';
+import '../theme/atriarch_theme.dart';
 import '../widgets/inc_dec.dart';
 import 'drill_running_screen.dart';
 
@@ -21,7 +22,45 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
   final hitsMaxCtrl = TextEditingController(text: '3.00');
   final iterCtrl = TextEditingController(text: '5.00');
 
-  void _startDrill() {
+  DrillConfig? _lastConfig;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<AppState>().resetDrillPhase();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<AppState>().addListener(_onPhaseChanged);
+    });
+  }
+
+  @override
+  void dispose() {
+    try {
+      context.read<AppState>().removeListener(_onPhaseChanged);
+    } catch (_) {
+      // Teardown — ignore.
+    }
+    super.dispose();
+  }
+
+  void _onPhaseChanged() {
+    if (!mounted) return;
+    final state = context.read<AppState>();
+    if (state.phase == DrillPhase.running) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const DrillRunningScreen()),
+      );
+    } else {
+      setState(() {});
+    }
+  }
+
+  DrillConfig? _buildConfig() {
     final state = context.read<AppState>();
     final onlineTargets = state.targets.where((t) => t.isOnline).toList();
 
@@ -29,10 +68,10 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No targets online. Run Target Setup first.')),
       );
-      return;
+      return null;
     }
 
-    final config = DrillConfig(
+    return DrillConfig(
       programType: ProgramType.programB,
       startMin: double.tryParse(startMinCtrl.text) ?? 1.0,
       startMax: double.tryParse(startMaxCtrl.text) ?? 3.0,
@@ -41,23 +80,34 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
       hitsMin: (double.tryParse(hitsMinCtrl.text) ?? 1).toInt(),
       hitsMax: (double.tryParse(hitsMaxCtrl.text) ?? 3).toInt(),
       targetIds: onlineTargets.map((t) => t.id).toList(),
-      noShootIds: onlineTargets.where((t) => t.isNoShoot).map((t) => t.id).toList(),
+      noShootIds:
+          onlineTargets.where((t) => t.isNoShoot).map((t) => t.id).toList(),
       iterations: (double.tryParse(iterCtrl.text) ?? 5).toInt(),
     );
+  }
 
+  void _startDrill() {
+    final config = _buildConfig();
+    if (config == null) return;
+    _lastConfig = config;
+    context.read<AppState>().startDrill(config);
+  }
+
+  void _retryDrill() {
+    final state = context.read<AppState>();
+    state.resetDrillPhase();
+    final config = _lastConfig ?? _buildConfig();
+    if (config == null) return;
     state.startDrill(config);
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const DrillRunningScreen()),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.atriarch;
     return Scaffold(
       appBar: AppBar(title: const Text('Program B - Individual Mode')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AtriarchSpacing.lg),
         child: Column(
           children: [
             _sectionLabel('Start Delay (seconds)'),
@@ -68,7 +118,7 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
                 IncDec(startMaxCtrl, 'Max', 0.25),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: AtriarchSpacing.xl),
             _sectionLabel('Time Between Activations (seconds)'),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -77,7 +127,7 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
                 IncDec(delayMaxCtrl, 'Max', 0.25),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: AtriarchSpacing.xl),
             _sectionLabel('Required Hits'),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -86,30 +136,37 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
                 IncDec(hitsMaxCtrl, 'Max'),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: AtriarchSpacing.xl),
             _sectionLabel('Iterations per Target'),
             Center(child: IncDec(iterCtrl, 'Count')),
-            const SizedBox(height: 16),
+            const SizedBox(height: AtriarchSpacing.lg),
             Consumer<AppState>(
               builder: (_, state, __) {
-                final online = state.targets.where((t) => t.isOnline).length;
-                final noShoot = state.targets.where((t) => t.isOnline && t.isNoShoot).length;
+                final online =
+                    state.targets.where((t) => t.isOnline).length;
+                final noShoot = state.targets
+                    .where((t) => t.isOnline && t.isNoShoot)
+                    .length;
                 return Text('$online target(s) online, $noShoot no-shoot',
-                    style: const TextStyle(color: Colors.grey));
+                    style: TextStyle(color: tokens.textTertiary));
               },
             ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                onPressed: _startDrill,
-                child: const Text('START DRILL',
-                    style: TextStyle(fontSize: 20, color: Colors.white)),
+            const SizedBox(height: AtriarchSpacing.xxl),
+            Consumer<AppState>(
+              builder: (_, state, __) {
+                if (state.phase == DrillPhase.armingFailed) {
+                  return _ArmingFailedBanner(onRetry: _retryDrill);
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+            Consumer<AppState>(
+              builder: (_, state, __) => _StartButton(
+                phase: state.phase,
+                onStart: _startDrill,
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: AtriarchSpacing.xxl),
           ],
         ),
       ),
@@ -118,8 +175,109 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
 
   Widget _sectionLabel(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(text, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      padding: const EdgeInsets.only(bottom: AtriarchSpacing.sm),
+      child: Text(text,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+    );
+  }
+}
+
+class _StartButton extends StatelessWidget {
+  final DrillPhase phase;
+  final VoidCallback onStart;
+
+  const _StartButton({required this.phase, required this.onStart});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.atriarch;
+    final arming = phase == DrillPhase.arming;
+    final disabled = arming;
+
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: Semantics(
+        button: true,
+        enabled: !disabled,
+        label: arming
+            ? 'Arming drill. Waiting for transmitter.'
+            : 'Start drill',
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: arming ? tokens.statusOffline : tokens.statusLive,
+            foregroundColor: tokens.bgBase,
+            disabledBackgroundColor: tokens.statusOffline,
+            disabledForegroundColor: tokens.bgBase,
+          ),
+          onPressed: disabled ? null : onStart,
+          child: arming
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: tokens.bgBase,
+                      ),
+                    ),
+                    const SizedBox(width: AtriarchSpacing.md),
+                    Text(
+                      'ARMING…',
+                      style: TextStyle(
+                          fontSize: 20, color: tokens.bgBase, letterSpacing: 2),
+                    ),
+                  ],
+                )
+              : Text(
+                  'START DRILL',
+                  style: TextStyle(fontSize: 20, color: tokens.bgBase),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ArmingFailedBanner extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _ArmingFailedBanner({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.atriarch;
+    return Container(
+      margin: const EdgeInsets.only(bottom: AtriarchSpacing.md),
+      padding: const EdgeInsets.all(AtriarchSpacing.md),
+      decoration: BoxDecoration(
+        color: tokens.bgElevated,
+        border: Border.all(color: tokens.statusViolation),
+        borderRadius: BorderRadius.circular(AtriarchRadius.md),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: tokens.statusViolation),
+          const SizedBox(width: AtriarchSpacing.md),
+          Expanded(
+            child: Text(
+              'No response from transmitter. Check connection.',
+              style: TextStyle(color: tokens.textPrimary),
+            ),
+          ),
+          const SizedBox(width: AtriarchSpacing.sm),
+          Semantics(
+            button: true,
+            label: 'Retry starting the drill',
+            child: OutlinedButton(
+              onPressed: onRetry,
+              child: const Text('Retry'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
