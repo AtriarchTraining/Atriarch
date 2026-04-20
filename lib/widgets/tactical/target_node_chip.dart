@@ -2,11 +2,6 @@ import 'package:flutter/material.dart';
 import '../../models/target_unit.dart';
 import '../../theme/atriarch_theme.dart';
 
-/// Square 56x56 target chip with a status dot.
-///
-/// Replaces the legacy [TargetChip] (deleted in tactical cleanup).
-/// This is the ONE place in the tactical design where a circle is used:
-/// the status dot visually reads as a "live light" on the physical target.
 class TargetNodeChip extends StatelessWidget {
   final TargetUnit target;
   final VoidCallback onTap;
@@ -24,7 +19,9 @@ class TargetNodeChip extends StatelessWidget {
         ? tokens.statusOffline
         : target.isNoShoot
             ? tokens.statusViolation
-            : tokens.statusLive;
+            : target.isUnreachable
+                ? tokens.statusArmed
+                : tokens.statusLive;
 
     return Material(
       color: tokens.bgCard,
@@ -43,7 +40,7 @@ class TargetNodeChip extends StatelessWidget {
             children: [
               Center(
                 child: Text(
-                  'T${target.id}',
+                  target.label,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
