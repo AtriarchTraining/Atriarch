@@ -27,6 +27,11 @@ bool identifyLedOn = false;
 unsigned long lateHitFlashStart = 0;
 bool lateHitFlashActive = false;
 
+// Heartbeat / safe-stop watchdog state
+unsigned long lastHeartbeatMs = 0;
+unsigned long lastTxEventMs = 0;   // updated each time we send ANY event (coalescing)
+unsigned long lastRxMs = 0;        // updated each time network.read() delivers a packet
+
 void setup() {
   Serial.begin(9600);
 
@@ -50,6 +55,13 @@ void setup() {
 
   randomSeed(analogRead(0));
 
+  // Initialize watchdog/heartbeat timestamps so a freshly-booted target
+  // doesn't immediately trip the safe-stop watchdog or flood heartbeats.
+  unsigned long now = millis();
+  lastRxMs = now;
+  lastHeartbeatMs = now;
+  lastTxEventMs = now;
+
   Serial.print("Target node 0");
   Serial.print(NODE_ADDRESS, OCT);
   Serial.println(" ready.");
@@ -59,6 +71,8 @@ void loop() {
   network.update();
   handleIncoming();
   handleState();
+  handleHeartbeat();
+  handleSafeStop();
 }
 
 void setLedGreen() {
@@ -103,20 +117,88 @@ bool checkVibration() {
   return false;
 }
 
+// Non-ACK events use seq=0 in payload[3] per protocol spec.
+// sendEvent() updates lastTxEventMs so the heartbeat emitter can coalesce.
 void sendEvent(int eventType, int param1, int param2) {
-  int payload[MSG_SIZE] = {eventType, param1, param2};
+  int payload[MSG_SIZE] = {eventType, param1, param2, 0};
   RF24NetworkHeader header(00);  // send to master node
   network.write(header, &payload, sizeof(payload));
+  lastTxEventMs = millis();
+}
+
+// Send EVT_ACK echoing the cmdSeq of the received command. Dedicated helper
+// because EVT_ACK is the only target->tx event that carries a non-zero seq.
+void sendAck(int ackedCmdType, int cmdSeq) {
+  int payload[MSG_SIZE] = {EVT_ACK, ackedCmdType, 0, cmdSeq};
+  RF24NetworkHeader header(00);
+  network.write(header, &payload, sizeof(payload));
+  lastTxEventMs = millis();
+}
+
+// Periodic heartbeat emitter. Coalesced against any other TX event so we
+// don't double-send right after a HIT/DONE/etc.
+void handleHeartbeat() {
+  unsigned long now = millis();
+  if (now - lastTxEventMs < HEARTBEAT_INTERVAL_MS) return;
+  if (now - lastHeartbeatMs < HEARTBEAT_INTERVAL_MS) return;
+  int payload[MSG_SIZE] = {
+    EVT_HB,
+    (int)(now & 0xFFFF),
+    (int)((now >> 16) & 0xFFFF),
+    0
+  };
+  RF24NetworkHeader header(00);
+  network.write(header, &payload, sizeof(payload));
+  lastHeartbeatMs = now;
+  lastTxEventMs = now;
+}
+
+// BLE safe-stop watchdog: if we haven't heard from the transmitter in
+// BLE_SILENCE_TIMEOUT_MS and we're NOT already idle, drop to IDLE and
+// kill LEDs/relay. No event is emitted — there's no master to hear it.
+void handleSafeStop() {
+  if (state == STATE_IDLE) return;
+  unsigned long now = millis();
+  if (now - lastRxMs > BLE_SILENCE_TIMEOUT_MS) {
+    setLedOff();
+    lateHitFlashActive = false;
+    state = STATE_IDLE;
+    // lastRxMs stays old until the next packet lands, which resets it.
+  }
 }
 
 void handleIncoming() {
   while (network.available()) {
     RF24NetworkHeader header;
-    int payload[MSG_SIZE] = {0, 0, 0};
+    int payload[MSG_SIZE] = {0, 0, 0, 0};
     network.read(header, &payload, sizeof(payload));
 
-    int cmd = payload[0];
+    // Any received packet resets both the BLE safe-stop watchdog and the
+    // heartbeat reference — a recent RX is as good as a recent TX for the
+    // purposes of proving the link is alive.
+    lastRxMs = millis();
 
+    int cmd = payload[0];
+    int cmdSeq = payload[3];
+
+    // EVT_ACK is emitted IMMEDIATELY, before acting on the command, so the
+    // transmitter's journal sees the lowest-latency possible ACK. Only the
+    // four ACK-tracked commands trigger this; unknown opcodes are ignored.
+    switch (cmd) {
+      case CMD_ACTIVATE:
+      case CMD_DEACTIVATE:
+      case CMD_IDENTIFY:
+      case CMD_PING:
+        sendAck(cmd, cmdSeq);
+        break;
+      default:
+        // Unknown command — drop silently.
+        continue;
+    }
+
+    // EVT_PONG on CMD_PING is retained alongside EVT_ACK because the
+    // existing discovery flow looks for EVT_PONG specifically. The ACK is
+    // additive and does not replace PONG for the discovery path.
     switch (cmd) {
       case CMD_PING:
         sendEvent(EVT_PONG, NODE_ADDRESS, 0);

@@ -31,6 +31,20 @@
 #define EVT_COMPLETE    12
 #define EVT_NOSHOOT_HIT 13
 #define EVT_LATE_HIT    14
+#define EVT_ACK         15   // target ACKs a received command
+#define EVT_HB          16   // heartbeat (periodic)
+
+// --- Heartbeat timing ---
+#define HEARTBEAT_INTERVAL_MS   1500
+#define UNREACHABLE_MISS_COUNT  3
+#define UNREACHABLE_WINDOW_MS   4500
+
+// --- ACK retry ---
+#define ACK_TIMEOUT_MS          300
+#define ACK_MAX_RETRIES         3
+
+// --- BLE safe-stop watchdog (target) ---
+#define BLE_SILENCE_TIMEOUT_MS  5000
 
 // --- Color Modes ---
 #define COLOR_NORMAL    1
@@ -54,6 +68,7 @@
 #define VIB_THRESHOLD       20  // pulseIn microseconds; tune per hardware
 
 // --- NRF24 Message Size ---
-#define MSG_SIZE 3  // max ints in a command/event payload
+// BREAKING: bumped from 3 to 4. payload[3] = cmdSeq for ACK correlation.
+#define MSG_SIZE 4  // max ints in a command/event payload
 
 #endif
