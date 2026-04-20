@@ -24,25 +24,23 @@ class SettingsScreen extends StatelessWidget {
                   onChanged: (v) {
                     if (v != null) ctrl.setPreference(v);
                   },
-                  child: Column(
+                  child: const Column(
                     children: [
-                      const RadioListTile<ThemePreference>(
+                      RadioListTile<ThemePreference>(
                         value: ThemePreference.auto,
-                        title: Text('Auto (ambient light)'),
+                        title: Text('Auto (time of day)'),
                         subtitle: Text(
-                          'Switch to light outdoors, dark indoors.',
+                          'Light from 06:00 to 18:00, dark otherwise.',
                         ),
                       ),
-                      const RadioListTile<ThemePreference>(
+                      RadioListTile<ThemePreference>(
                         value: ThemePreference.light,
                         title: Text('Light'),
                       ),
-                      const RadioListTile<ThemePreference>(
+                      RadioListTile<ThemePreference>(
                         value: ThemePreference.dark,
                         title: Text('Dark'),
                       ),
-                      if (ctrl.sensorUnavailable)
-                        const _SensorUnavailableNotice(),
                     ],
                   ),
                 ),
@@ -88,35 +86,6 @@ class _SettingsSection extends StatelessWidget {
         child,
         Divider(height: 1, color: tokens.border),
       ],
-    );
-  }
-}
-
-class _SensorUnavailableNotice extends StatelessWidget {
-  const _SensorUnavailableNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.atriarch;
-    return Padding(
-      padding: const EdgeInsets.all(AtriarchSpacing.lg),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.warning, size: 18, color: tokens.statusLate),
-          const SizedBox(width: AtriarchSpacing.sm),
-          Expanded(
-            child: Text(
-              'Ambient light sensor unavailable. Auto mode uses a '
-              'time-of-day schedule (light 06:00–18:00).',
-              style: TextStyle(
-                fontSize: 13,
-                color: tokens.textSecondary,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -1,15 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:light_sensor/light_sensor.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 
 import '../data/preferences_repository.dart';
 
 /// User preference for theme selection.
 ///
-/// - [auto] — lux-driven (ambient light sensor) with time-of-day fallback
-///   when the sensor is unavailable.
+/// - [auto] — time-of-day schedule (06:00–18:00 local = LIGHT, else DARK).
+///   iPhone has no reliable ambient-light Flutter plugin, so the schedule
+///   is the design, not a fallback.
 /// - [light] — always light; brightness override applies on drill/setup.
 /// - [dark] — always dark; no brightness override.
 enum ThemePreference {
@@ -51,15 +51,10 @@ class _RealBrightnessController implements BrightnessController {
 
 /// Drives `MaterialApp.themeMode` + outdoor-rule brightness override.
 ///
-/// Lux hysteresis (§7.2):
-/// - lux > 1000 sustained ≥2s → LIGHT
-/// - lux < 200 sustained ≥2s → DARK
-/// - in-between or flapping → hold
-///
-/// When preference is [ThemePreference.auto] and the `light_sensor` plugin
-/// is unavailable, fall back to a local-time schedule: 06:00–18:00 = LIGHT,
-/// otherwise DARK. [sensorUnavailable] flips true exactly once per session
-/// so the UI can surface a one-shot notice.
+/// Auto mode uses a local-time schedule: hour ∈ [6, 18) → LIGHT, else DARK.
+/// A once-per-minute `Timer.periodic` re-evaluates so the theme flips
+/// cleanly when the user's clock crosses 06:00 or 18:00 while the app is
+/// open.
 ///
 /// Brightness override (§Outdoor rule): only when [setDrillContextActive]
 /// is true AND resolved theme is LIGHT. Captures the prior brightness once
@@ -68,40 +63,30 @@ class _RealBrightnessController implements BrightnessController {
 /// it re-applies.
 class ThemeController extends ChangeNotifier with WidgetsBindingObserver {
   static const String preferenceSettingKey = 'theme_preference';
-  static const int _lightLuxThreshold = 1000;
-  static const int _darkLuxThreshold = 200;
-  static const Duration _hysteresisWindow = Duration(seconds: 2);
+  static const Duration _scheduleTickInterval = Duration(minutes: 1);
   static const double _maxBrightness = 1.0;
 
   final PreferencesRepository _preferences;
-  final Stream<int>? _luxStreamOverride;
   final BrightnessController _brightness;
   final WidgetsBinding _binding;
   final DateTime Function() _now;
 
   ThemeController({
     required PreferencesRepository preferences,
-    Stream<int>? luxStreamOverride,
     BrightnessController? brightnessOverride,
     WidgetsBinding? binding,
     DateTime Function()? now,
   })  : _preferences = preferences,
-        _luxStreamOverride = luxStreamOverride,
         _brightness = brightnessOverride ?? _RealBrightnessController(),
         _binding = binding ?? WidgetsBinding.instance,
         _now = now ?? DateTime.now;
 
   ThemePreference _preference = ThemePreference.auto;
   ThemeMode _themeMode = ThemeMode.light;
-  bool _sensorUnavailable = false;
   bool _drillContextActive = false;
 
-  // Lux hysteresis state. `_pendingZone` is the zone the lux stream has been
-  // in since a timer was started. When the timer fires (after
-  // `_hysteresisWindow`), the zone "wins" and becomes the resolved theme.
-  _LuxZone _pendingZone = _LuxZone.hold;
-  StreamSubscription<int>? _luxSub;
-  Timer? _hysteresisTimer;
+  // Once-per-minute re-evaluation of the schedule while the user is in auto.
+  Timer? _scheduleTicker;
 
   // Brightness-override bookkeeping.
   double? _capturedBrightness;
@@ -111,22 +96,18 @@ class ThemeController extends ChangeNotifier with WidgetsBindingObserver {
 
   ThemeMode get themeMode => _themeMode;
   ThemePreference get preference => _preference;
-  bool get sensorUnavailable => _sensorUnavailable;
   bool get drillContextActive => _drillContextActive;
 
-  /// Load persisted preference, subscribe to lux stream, start listening for
-  /// app lifecycle changes. Safe to call once per app session.
+  /// Load persisted preference and start lifecycle observation. Safe to call
+  /// once per app session.
   Future<void> init() async {
     _binding.addObserver(this);
     final stored =
         await _preferences.getSetting<String>(preferenceSettingKey);
     _preference = ThemePreference.fromKey(stored);
     _applyPreference(notify: false);
-
-    // Only subscribe to lux when the user is in auto. If they later switch
-    // back to auto, `setPreference` will (re)subscribe.
     if (_preference == ThemePreference.auto) {
-      _subscribeLux();
+      _startScheduleTicker();
     }
   }
 
@@ -135,10 +116,8 @@ class ThemeController extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     _disposed = true;
     _binding.removeObserver(this);
-    _hysteresisTimer?.cancel();
-    _hysteresisTimer = null;
-    unawaited(_luxSub?.cancel());
-    _luxSub = null;
+    _scheduleTicker?.cancel();
+    _scheduleTicker = null;
     // Best-effort restore on teardown.
     if (_overrideApplied) {
       unawaited(_restoreBrightness());
@@ -156,12 +135,10 @@ class ThemeController extends ChangeNotifier with WidgetsBindingObserver {
     );
 
     if (pref == ThemePreference.auto) {
-      _subscribeLux();
+      _startScheduleTicker();
     } else {
-      unawaited(_luxSub?.cancel());
-      _luxSub = null;
-      _hysteresisTimer?.cancel();
-      _hysteresisTimer = null;
+      _scheduleTicker?.cancel();
+      _scheduleTicker = null;
     }
     _applyPreference();
   }
@@ -178,68 +155,14 @@ class ThemeController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  // ------------------------------------------------------------------- Lux
+  // -------------------------------------------------------------- Schedule
 
-  void _subscribeLux() {
-    _luxSub?.cancel();
-    _hysteresisTimer?.cancel();
-    _hysteresisTimer = null;
-    _pendingZone = _LuxZone.hold;
-
-    final stream = _luxStreamOverride ?? LightSensor.luxStream();
-    try {
-      _luxSub = stream.listen(
-        _onLux,
-        onError: (Object _) => _handleSensorUnavailable(),
-      );
-    } catch (_) {
-      _handleSensorUnavailable();
-    }
-  }
-
-  void _onLux(int lux) {
-    final zone = _zoneForLux(lux);
-    if (zone == _LuxZone.hold) {
-      // Mid-zone reading — reset pending timer; whatever was building loses.
-      _pendingZone = _LuxZone.hold;
-      _hysteresisTimer?.cancel();
-      _hysteresisTimer = null;
-      return;
-    }
-    if (zone != _pendingZone) {
-      _pendingZone = zone;
-      _hysteresisTimer?.cancel();
-      _hysteresisTimer = Timer(_hysteresisWindow, _commitPendingZone);
-    }
-    // Same zone continuing — timer already running, nothing to do.
-  }
-
-  void _commitPendingZone() {
-    if (_preference != ThemePreference.auto) return;
-    final target = switch (_pendingZone) {
-      _LuxZone.light => ThemeMode.light,
-      _LuxZone.dark => ThemeMode.dark,
-      _LuxZone.hold => _themeMode,
-    };
-    _setThemeMode(target);
-  }
-
-  _LuxZone _zoneForLux(int lux) {
-    if (lux > _lightLuxThreshold) return _LuxZone.light;
-    if (lux < _darkLuxThreshold) return _LuxZone.dark;
-    return _LuxZone.hold;
-  }
-
-  void _handleSensorUnavailable() {
-    if (_sensorUnavailable) return;
-    _sensorUnavailable = true;
-    _luxSub?.cancel();
-    _luxSub = null;
-    if (_preference == ThemePreference.auto) {
+  void _startScheduleTicker() {
+    _scheduleTicker?.cancel();
+    _scheduleTicker = Timer.periodic(_scheduleTickInterval, (_) {
+      if (_preference != ThemePreference.auto) return;
       _setThemeMode(_scheduleResolvedMode());
-    } else {
-      _safeNotify();
-    }
+    });
   }
 
   ThemeMode _scheduleResolvedMode() {
@@ -259,12 +182,7 @@ class ThemeController extends ChangeNotifier with WidgetsBindingObserver {
         _setThemeMode(ThemeMode.dark, notify: notify);
         break;
       case ThemePreference.auto:
-        if (_sensorUnavailable) {
-          _setThemeMode(_scheduleResolvedMode(), notify: notify);
-        } else {
-          // Hold current until first lux reading arrives.
-          if (notify) _safeNotify();
-        }
+        _setThemeMode(_scheduleResolvedMode(), notify: notify);
         break;
     }
   }
@@ -329,6 +247,11 @@ class ThemeController extends ChangeNotifier with WidgetsBindingObserver {
         state == AppLifecycleState.hidden) {
       unawaited(_restoreBrightness());
     } else if (state == AppLifecycleState.resumed) {
+      // Re-evaluate the schedule in case the clock crossed 06:00 / 18:00
+      // while the app was backgrounded, then restore brightness if needed.
+      if (_preference == ThemePreference.auto) {
+        _setThemeMode(_scheduleResolvedMode());
+      }
       _maybeApplyBrightnessOverride();
     }
   }
@@ -338,5 +261,3 @@ class ThemeController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 }
-
-enum _LuxZone { light, dark, hold }
