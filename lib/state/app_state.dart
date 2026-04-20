@@ -70,6 +70,16 @@ class AppState extends ChangeNotifier {
     await bleService.write(TransmitterProtocol.encodeStop());
   }
 
+  // Fallback used when the transmitter doesn't echo FIN/ after a STOP —
+  // typically on a flaky BLE link or during Gate 1 before STOP_ACK lands.
+  // Triggered by drill_running_screen after a 2s grace window.
+  void forceDrillFinished() {
+    final session = currentSession;
+    if (session == null || !session.isRunning) return;
+    session.addEvent(SessionEvent(type: EventType.drillFinished));
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _dataSub?.cancel();

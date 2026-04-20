@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../theme/atriarch_theme.dart';
 
 class DrillTimer extends StatefulWidget {
   const DrillTimer({super.key});
@@ -10,13 +12,13 @@ class DrillTimer extends StatefulWidget {
 
 class _DrillTimerState extends State<DrillTimer> {
   final _stopwatch = Stopwatch()..start();
-  late Timer _timer;
+  late final Timer _timer;
 
   @override
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      setState(() {});
+      if (mounted) setState(() {});
     });
   }
 
@@ -36,12 +38,15 @@ class _DrillTimerState extends State<DrillTimer> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.atriarch;
     return Text(
       _format(_stopwatch.elapsed),
-      style: const TextStyle(
-        fontSize: 72,
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 88,
         fontWeight: FontWeight.w300,
-        fontFamily: 'monospace',
+        color: tokens.textPrimary,
+        height: 1.0,
+        letterSpacing: -1,
       ),
     );
   }
