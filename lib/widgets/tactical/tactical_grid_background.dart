@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/atriarch_theme.dart';
+
 /// Subtle 20px tactical grid drawn behind child content.
 class TacticalGridBackground extends StatelessWidget {
   final Widget child;
@@ -11,14 +13,15 @@ class TacticalGridBackground extends StatelessWidget {
     required this.child,
     this.cellSize = 20,
     this.lineColor,
-  });
+  }) : assert(cellSize > 0, 'cellSize must be positive');
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.atriarch;
     return CustomPaint(
       painter: _GridPainter(
         cellSize: cellSize,
-        color: lineColor ?? const Color.fromRGBO(42, 49, 64, 0.1),
+        color: lineColor ?? tokens.border.withValues(alpha: 0.1),
       ),
       child: child,
     );
