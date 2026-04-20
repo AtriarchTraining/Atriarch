@@ -3368,7 +3368,348 @@ git commit -m "feat: add results screen with per-target stats, violations, and e
 
 ## Future Enhancements (not in this plan)
 
-- **Excel export** from results screen (Syncfusion dependency already in pubspec)
-- **Drill presets** — save/load configurations to local storage
-- **Session history** — persist past drill results for review
-- **Vibration threshold calibration** — per-target or global setting via app
+- **Excel export** from results screen (Syncfusion dependency already in pubspec) — SUPERSEDED by addendum (now in-scope as CSV+PDF).
+- **Drill presets** — save/load configurations to local storage — SUPERSEDED (now in-scope for v1 via Hive, see addendum §7.3).
+- **Session history** — persist past drill results for review (stays v2, see TODOS.md).
+- **Vibration threshold calibration** — per-target or global setting via app (stays v2, see TODOS.md).
+
+---
+
+## DESIGN REVIEW ADDENDUM (2026-04-20)
+
+This addendum captures design decisions made during `/plan-design-review` on feature/system-v2. It supersedes any conflicting guidance in Tasks 3.7–4.6. Implementers should read this BEFORE touching the corresponding task.
+
+### Ship Blockers (must fix before field test)
+
+1. **App does not compile on feature/system-v2.** `lib/main.dart` imports `screens/device_discovery_screen.dart`, `lib/screens/results_screen.dart` imports `home_screen.dart`. Neither file exists on this branch. Task 3.7 and Task 4.2 were skipped during execution. The commit "feat: add all app screens" is misnamed — it added 4 of 6 screens. Must be resolved before any UI testing.
+
+2. **STOP button has no confirmation guard.** Single tap ends a live drill. See §7.1 for fix.
+
+3. **Target status uses color-only signaling.** ~8% of male trainers cannot distinguish the current red/green pair on TargetChip. For a safety-adjacent product, this is a real risk. See §6 for fix.
+
+### DESIGN.md — Atriarch Range Console (v1)
+
+**Aesthetic direction:** Dark-first "range console" — oscilloscope-meets-iPhone. Industrial but not mall-tactical. Near-black base, high-contrast status colors, big mono numerals. Readable in bright outdoor sun BECAUSE it's dark with high-luminance accents.
+
+**Color tokens** (all screens, replace `Colors.blue`/`Colors.green`/etc. with semantic tokens):
+
+```
+  --bg-base:       #0A0D12   (near-black, not pure black)
+  --bg-elevated:   #141820   (cards, sheets)
+  --bg-card:       #1A1F2A
+  --border:        #2A3140   (thin separators only)
+  --text-primary:  #E8EDF5
+  --text-secondary:#8892A8
+  --text-tertiary: #4A5365
+
+  --status-armed:     #F5A623   (amber, drill armed / timer running / in-progress-neutral)
+  --status-live:      #39D98A   (bright green, active shoot target / success)
+  --status-hit:       #5B9BFF   (blue, hit detected / neutral-positive)
+  --status-violation: #FF3B4D   (saturated red, no-shoot hit / destructive)
+  --status-late:      #FFB547   (orange, late hit / warning)
+  --status-offline:   #4A5365   (grey, not online)
+```
+
+**Typography:**
+- `--font-mono`: "JetBrains Mono", "IBM Plex Mono", ui-monospace — all numerals (timer, timing values, stats tables)
+- `--font-sans`: "Inter Tight", "SF Pro Display" — all labels, headers, body copy
+- Scale: 12 / 14 / 16 / 20 / 28 / 48 / 96pt (timer hero is 96)
+- Weights: 300 (hero numerals), 500 (body), 700 (headers)
+- **Not** the default Roboto. Bundle the fonts in `assets/fonts/`.
+
+**Spacing scale:** 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 (no ad-hoc values).
+
+**Radius:**
+- `--radius-sm`: 4 (inputs, chips)
+- `--radius-md`: 8 (cards, buttons)
+- `--radius-lg`: 12 (sheets, major containers)
+- NO pill-shaped buttons. NO circles except the STOP button (deliberate physical "panic button" metaphor).
+
+**Motion budget — 3 intentional motions total:**
+1. Connection-status banner slide-in/out (300ms ease-out)
+2. Drill "DRILL ACTIVE" label amber breathe-pulse (2s loop, opacity 0.7→1.0→0.7, subtle)
+3. STOP ring-fill on press-hold (800ms linear — see §7.1)
+
+**Outdoor readability rules:**
+- Min text size: 14pt body, 18pt tappable labels
+- Min contrast: 7:1 for primary text against `--bg-base` (AAA, sun demands it)
+- Primary touch targets ≥ 44pt (HIG baseline, confirmed per user decision)
+- Destructive touch targets (STOP) ≥ 120pt (already honored: 200pt drill STOP)
+
+**Iconography:** Material Symbols rounded, locked allowlist:
+`bluetooth`, `bluetooth_disabled`, `refresh`, `flash_on`, `gps_fixed`, `check_circle`, `warning`, `home`, `block` (no-shoot redundant marker), `gpp_good`, `gpp_bad`.
+
+**Apply to Task 3.6 (main.dart):** Replace `primarySwatch: Colors.blue` + `useMaterial3: true` with a full `ThemeData.dark()` derived from the tokens above. Bundle JetBrains Mono + Inter Tight into `pubspec.yaml` assets.
+
+---
+
+### §1 Information Architecture
+
+**Program Setup (Tasks 4.3, 4.4) restructure — one screen, numbered steps, preset row at top, sticky START.**
+
+Replace current flat scroll with:
+
+```
+┌────────────────────────────────────────────────┐
+│ ← Program A — Grouped Mode                     │
+├────────────────────────────────────────────────┤
+│ Preset: [ Standard ▾ ]    [ Save as… ]         │ ← preset dropdown, saved presets from Hive
+├────────────────────────────────────────────────┤
+│ STEP 1 — Assign Targets to Groups              │ ← hero section, largest
+│ [ Group 1 (2 targets) · selected ]             │
+│   T1  T11  [ + tap available ]                 │
+│ [ Group 2 (1) ]  [ Group 3 (0) ]  [ 4 ]  [ 5 ] │
+│                                                │
+│ Available (online): T2  T12  T21  T22          │
+│ Tap a group, then tap targets to assign.       │
+├────────────────────────────────────────────────┤
+│ STEP 2 — Timing                                │ ← collapsible, preset-filled
+│ Start delay:          1.00 ↔ 3.00 s            │
+│ Between activations:  0.50 ↔ 2.00 s            │
+│ Required hits:        1    ↔ 3                 │
+├────────────────────────────────────────────────┤
+│ STEP 3 — Iterations per group:   [ 5 ]         │
+├────────────────────────────────────────────────┤
+│ (sticky, SafeArea bottom)                      │
+│ [      START DRILL      ] amber, 56pt tall     │
+└────────────────────────────────────────────────┘
+```
+
+**Home screen (Task 4.2) spec:**
+- Persistent connection-status banner across top: `--status-live` when BLE connected, `--status-armed` when reconnecting, `--status-violation` when disconnected. Tap = go to Device Discovery.
+- 3 tappable full-width rows: **Target Setup**, **Program A — Grouped**, **Program B — Individual**. Each has a one-line description beneath.
+- No cards — just borders between rows. App UI rule: "cards only when card IS the interaction."
+
+**Results (Task 4.6) headline:**
+- Before the 6 stat cards, a single primary metric: `"12 / 15 completions · 0 violations"` in 28pt mono.
+- Violation count dominates if > 0: use `--status-violation` for the whole headline.
+- The 6 stat cards drop to 3 (completions / violations / duration) — remove redundant activations/hits/late cards. Those roll into the per-target table.
+
+---
+
+### §2 Interaction States
+
+**Mid-drill connection loss (Task 4.5).** If `bleService.isConnected` flips false OR no event arrives for 30 seconds, show a dismissible banner at top of DrillRunningScreen:
+
+```
+  ┌──────────────────────────────────────────────┐
+  │ ⚠ CONNECTION LOST — drill may still be running│
+  │ [ Reconnect ]                    [ End Drill ]│
+  └──────────────────────────────────────────────┘
+```
+
+- Timer keeps going (it's a phone stopwatch, BLE-independent).
+- Reconnect: re-attempt BLE connection, re-subscribe to notifications, don't reset session.
+- End Drill: flush to Results with whatever events arrived, mark session.incomplete = true.
+- Implement `AppState.connectionLost` boolean + `DrillSession.incomplete` flag.
+
+**Task 4.1 Target Discovery empty-state upgrade:**
+```
+  No targets found.
+  Check:  · Transmitter powered and near you?
+          · Targets powered on?
+          · You connected to "{transmitter_name}" above?
+
+  [ Scan for Targets ]     [ Change Transmitter ]
+```
+
+**Task 4.1 Partial discovery banner.** After `DDONE/`:
+```
+  Found 10 targets online.
+  Expected more? Tap a target to flash its LED and verify.
+```
+
+**Task 4.6 Results "No session data" dead state:** add a `[ Return to Home ]` button below the message — currently there's no escape.
+
+**Task 4.5 Drill stall detection:** If no event for 30s AND session has pending iterations, render a passive status chip above the timer: `"⚠ No activity for 30s"` in `--status-armed`. Does not block the drill; just surfaces the fact.
+
+---
+
+### §3 User Journey
+
+**Identify-target UX (Tasks 4.1, firmware 2.3).**
+
+**v1 (ship):** Tap-and-hold a TargetChip = CMD_IDENTIFY sent repeatedly while held (re-fire every 500ms since existing CMD_IDENTIFY flashes 3x over ~900ms). Release = stop. Trainer walks downrange with phone, presses the chip for the target they're looking at, sees matching flash. One round-trip per target identification — not four.
+
+**v2 (deferred to TODOS.md):** Photo-based identification. Trainer takes one photo of the range, taps each target in the photo, app associates coordinates with target IDs. Future enhancement path.
+
+**Between-student restart (Task 4.6 Results).** Replace single FAB with 3 explicit actions in a bottom action bar:
+- `[ Run Again ]` — re-launches with the same `DrillConfig` (still in `AppState`). Re-uses group assignment and timing. One tap, new session.
+- `[ New Drill ]` — same program (A or B), fresh config screen.
+- `[ Home ]` — back to main menu.
+
+Use `--bg-elevated` bar with 3 equal buttons. No FAB.
+
+---
+
+### §4 AI Slop Mitigations
+
+- Remove `primarySwatch: Colors.blue`. Replace the Material 3 defaults entirely with `ThemeData.dark()` derived from the §DESIGN.md tokens above.
+- Remove `Card` wrappers from non-interactive content. Specifically: `_StatCard` in Task 4.6 becomes a simple Column with border-top/border-bottom — no Card.
+- Replace all named `Colors.X` literals in Tasks 3.7–4.6 with semantic tokens (ex: `Theme.of(context).extension<AtriarchTokens>()?.statusLive`).
+- Bundle Inter Tight + JetBrains Mono fonts. Not Roboto. Not Inter (default). Not the Material default stack.
+
+---
+
+### §5 Design System (covered in DESIGN.md section above)
+
+Create `DESIGN.md` at repo root containing the tokens, typography, spacing, motion, and iconography rules specified above. Every implementer references it before building a screen.
+
+Implement tokens in Flutter via a `ThemeExtension<AtriarchTokens>` class in `lib/theme/atriarch_theme.dart`.
+
+---
+
+### §6 Responsive & Accessibility
+
+**Colorblind-safe TargetChip (Tasks 4.1, widgets/target_chip.dart).** Color is double-encoded with iconography:
+- Offline: grey chip + `bluetooth_disabled` leading icon (14pt).
+- Available (unassigned): `--bg-card` chip + plain "T{id}" text, no icon.
+- Grouped: group-color chip + group number as trailing badge (e.g. "T5 ᴳ²").
+- No-shoot: violation-red chip + `block` leading icon. ALWAYS shows icon — color alone is not enough.
+
+Update the `TargetChip` widget signature to accept `groupColor` (nullable, from the 5-group palette in §7.2 below).
+
+**Touch target sizes (project-wide rule in DESIGN.md):**
+- Minimum 44pt for all tappable elements (Apple HIG baseline).
+- IncDec buttons grow from ~30pt → 44pt (padding 16 + 20pt icon = 52pt effective).
+- TargetChip minimum 44pt height.
+- All FABs and IconButtons: 44pt minimum.
+
+**Semantics:**
+- Every IconButton gets a `tooltip` and a `Semantics(label: ...)`.
+- STOP button announces: `"STOP. Press and hold to end the drill."` — makes the press-hold pattern discoverable to screen readers.
+
+**Reduce Motion:** respect `MediaQuery.of(context).disableAnimations`. Under reduce-motion, the STOP ring-fill becomes an instant single-tap (trade: we lose the accidental-tap guard — acceptable because the user has opted into motion reduction and likely has different accessibility needs).
+
+**Typography min contrast:** 7:1 against `--bg-base`. Audit `--text-tertiary: #4A5365` — it's borderline against `--bg-base: #0A0D12`; reserve it for non-essential labels only (timestamps, secondary metadata).
+
+---
+
+### §7 Resolved Design Decisions
+
+**§7.1 STOP safety — press-and-hold with 800ms ring-fill.**
+
+Drill STOP button (Task 4.5):
+- Single tap: no-op (no visual feedback — dead press).
+- Press-and-hold: a ring around the 200pt circle fills clockwise over 800ms. Fill is `--status-violation`. If released before completion, ring snaps back to empty.
+- At 800ms complete: fires `stopDrill()`.
+- Under Reduce Motion: single tap fires immediately (accessibility override).
+
+Implementation: wrap ElevatedButton in a `GestureDetector` with `onLongPressStart` / `onLongPressEnd`, drive an `AnimationController` (duration: 800ms).
+
+Semantics: `label: "STOP button. Press and hold to end the drill."`
+
+**§7.2 Drill preview — group-color confirmation (requires firmware extension).**
+
+Add a `[ Preview Groups ]` button above `[ START DRILL ]` on Program Setup. Tapping it sends a new command to the transmitter, which broadcasts to all targets simultaneously:
+
+- Each target in Group 1 lights up **magenta** (steady).
+- Each target in Group 2 lights up **cyan** (steady).
+- Each target in Group 3 lights up **yellow** (steady).
+- Each target in Group 4 lights up **purple** (steady).
+- Each target in Group 5 lights up **lime** (steady).
+- No-shoot targets within any group: **blink** in that group's color (on/off at 2 Hz).
+- After 5 seconds, all targets go dark automatically.
+
+This visually confirms grouping + no-shoot assignments simultaneously, without previewing the randomized activation sequence (which trainers don't want to spoil).
+
+**Firmware scope additions (Tasks 1.x + 2.x):**
+- Target firmware (Task 1.2 + new helper): new `CMD_PREVIEW` with payload `{CMD_PREVIEW, color_index, blink_flag}` where `color_index` ∈ {1..5} maps to the 5 group colors, `blink_flag` ∈ {0, 1}. Enters STATE_PREVIEW for 5000ms then returns to IDLE.
+- Target firmware: extend LED helpers with `setLedGroupColor(int colorIndex, bool blink)`. Color indices map to CRGB constants.
+- Transmitter firmware (Task 2.4 extension): parse new BLE command `PREVIEW/<g1>/<g2>/<g3>/<g4>/<g5>/<ns>/`. For each group, send `{CMD_PREVIEW, groupIndex, 0}` to every target in that group. For each no-shoot target, send `{CMD_PREVIEW, groupIndex, 1}` (overrides).
+- App (Task 4.4 Program A + 4.3 Program B): wire `[ Preview Groups ]` button → `TransmitterProtocol.encodePreview(groups, noShootIds)`.
+
+Color palette on WS2812 (tested against green cardboard at noon — provisional, may need calibration):
+```
+  Group 1 magenta: CRGB(255, 0, 120)
+  Group 2 cyan:    CRGB(0, 200, 255)
+  Group 3 yellow:  CRGB(255, 200, 0)
+  Group 4 purple:  CRGB(140, 0, 255)
+  Group 5 lime:    CRGB(140, 255, 0)
+```
+
+**§7.3 Drill presets — v1 ships with Hive-backed user presets.**
+
+- Add `hive` + `hive_flutter` to `pubspec.yaml` (if not already). Already listed as implementation option in TODOS.md.
+- Create `lib/models/drill_preset.dart` — stores `DrillConfig` + a name string.
+- Create `lib/services/preset_service.dart` — CRUD on a Hive box `presets`.
+- Program Setup screens get: `Preset: [dropdown with saved + "Custom"]  [Save as…]  [Manage…]`.
+  - Dropdown shows user-named presets, plus 3 built-in starters ("Easy", "Standard", "Hard") that new users see on first launch.
+  - "Save as…" prompts for a name, saves current config under that name.
+  - "Manage…" opens a bottom-sheet list of presets with rename/delete actions.
+- Built-in presets are seeded on first Hive-open but are editable (and deletable) like user presets.
+
+**§7.4 Home connection-status banner** — see §1 Home screen spec.
+
+**§7.5 Sticky START on Program Setup** — see §1 Program Setup restructure. `START DRILL` wrapped in a `SafeArea` + `BottomAppBar` below the scroll region.
+
+**§7.6 Drill stall detection threshold — 30 seconds** of event silence during a running drill triggers the passive stall chip (§2). Tuning note: if field test shows false positives for longer delayMax values, raise to `max(30, delayMax * 2 + 10)`.
+
+**§7.7 Results export — CSV + PDF both.**
+
+Task 4.6 gets a share action in the AppBar (`Icons.ios_share`). Tapping opens a bottom sheet:
+- `[ Export CSV ]` → writes a CSV with one row per `SessionEvent` (timestamp, type, targetId, hitNumber, totalTimeMs) using `syncfusion_flutter_xlsio` (already in plan). Trigger iOS share sheet.
+- `[ Generate PDF ]` → renders a one-page summary (headline stat + per-target table + event log) using `pdf` + `printing` packages. Trigger iOS share sheet.
+
+Field names on CSV export match the `SessionEvent` model exactly — no transformation — so it round-trips into analytics tools.
+
+---
+
+### §8 NOT in Scope (explicitly deferred)
+
+| Item | Why deferred | Captured in |
+|---|---|---|
+| Photo-based identify with tap-to-assign | v2+; requires AR coordinate capture, UI exploration, validation | TODOS.md "v2 app" |
+| Student-facing large timer display | v2 (user memory confirms) | TODOS.md |
+| Voice commands (start/reset) | v2 (noise environment will be brutal) | TODOS.md |
+| AI drill generation | v2 | TODOS.md |
+| Cross-session drill history | v2 (current: single-session only) | TODOS.md |
+| Android build | v2 (v1 = iPhone only per CEO) | TODOS.md |
+| Per-target threshold tuning UI | v2, requires firmware CONFIG/ command | TODOS.md |
+| Advanced export (IPSC/Practiscore) | v2 | TODOS.md |
+| Dark/light theme toggle | v1 ships dark-only; light theme is v2 or never | — |
+| Tablet-specific layouts | v1 is phone-sized; tablet uses scaled phone UI | — |
+
+---
+
+### §9 What Already Exists (reuse, don't rebuild)
+
+- `TargetChip` widget (lib/widgets/target_chip.dart) — extend with group-color prop + icons per §6, don't rewrite.
+- `IncDec` widget (lib/widgets/IncDec.dart, rename to inc_dec.dart per Task 3.7) — bump touch targets to 44pt per §6.
+- `DrillTimer` widget — already monospace-styled, bump to JetBrains Mono per §DESIGN.md, keep the rest.
+- `SessionEvent` model + event-tile rendering in `ResultsScreen` — keep structure, restyle per §DESIGN.md.
+- BLE service + protocol encoding — no design changes needed.
+
+---
+
+### §10 Revised Task Order (impacts execution)
+
+Given the addendum, suggest re-ordering execution:
+
+1. **First: compile-unblock the app** — implement Task 3.7 (DeviceDiscoveryScreen), Task 4.2 placeholder (HomeScreen), wire Task 4.1 (TargetDiscoveryScreen). `flutter analyze` must pass before any more UI work.
+2. **Second: create DESIGN.md + theme** — `lib/theme/atriarch_theme.dart`, bundle fonts, ThemeExtension. Gate all subsequent UI PRs on using tokens.
+3. **Third: firmware extension for §7.2 Preview** — Tasks 1.2/1.3/2.4 get CMD_PREVIEW + BLE PREVIEW/ command BEFORE app previews it. Otherwise app wiring stalls.
+4. **Then: app screens in plan order** (Tasks 4.1 → 4.6), applying addendum specs.
+5. **Last: export (§7.7) + presets (§7.3)** — additive, don't block field test.
+
+---
+
+*End of Design Review Addendum — 2026-04-20*
+
+---
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR | mode: SCOPE_EXPANSION, 0 critical gaps, 7 proposals all accepted |
+| Codex Review | `/codex review` | Independent 2nd opinion | 2 | issues_found | codex flagged plan-level issues on 2 runs |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 21 issues, 1 critical gap, FULL_REVIEW mode |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | issues_open (FULL) | score: 3/10 → 8/10, 14 decisions made, 2 unresolved (see below) |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**UNRESOLVED:** 2 items
+- Identify-target implementation path for v1: is "tap-and-hold repeats CMD_IDENTIFY" acceptable as interim, or do we fast-track photo-based? (Recommend v1 = tap-and-hold; photo-based = v2.)
+- Group-color preview (§7.2) requires a firmware protocol extension that wasn't in the original plan. Needs eng-review re-confirmation that CMD_PREVIEW + BLE PREVIEW/ command fit within the ATmega328P's RF24 payload budget and serial parser.
+
+**VERDICT:** CEO + ENG + DESIGN ALIGNED — ready to implement WITH addendum applied. Recommend re-running `/plan-eng-review` (or `/codex review`) on §7.2 firmware extension before that task lands. 1 ship blocker (compile failure on feature/system-v2) must resolve in Task 3.7 + 4.2 execution first.
