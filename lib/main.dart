@@ -1,14 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'data/drill_log_repository.dart';
+import 'data/hive_bootstrap.dart';
+import 'data/preferences_repository.dart';
+import 'data/session_repository.dart';
 import 'state/app_state.dart';
 import 'theme/atriarch_theme.dart';
 import 'screens/device_discovery_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initHive();
+
+  final preferences = PreferencesRepository();
+  final sessions = SessionRepository();
+  final drillLogs = DrillLogRepository();
+
+  await Future.wait([
+    preferences.init(),
+    sessions.init(),
+    drillLogs.init(),
+  ]);
+  // On cold start, begin (or roll over) the current session per §4.E.
+  await sessions.beginSessionIfNeeded();
+
   runApp(
     ChangeNotifierProvider(
-      create: (_) => AppState(),
+      create: (_) => AppState(
+        preferences: preferences,
+        sessions: sessions,
+        drillLogs: drillLogs,
+      ),
       child: const AtriarchApp(),
     ),
   );

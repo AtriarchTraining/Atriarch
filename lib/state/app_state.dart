@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../data/drill_log_repository.dart';
+import '../data/preferences_repository.dart';
+import '../data/session_repository.dart';
 import '../services/ble_service.dart';
 import '../services/transmitter_protocol.dart';
 import '../models/target_unit.dart';
@@ -48,7 +51,18 @@ class AppState extends ChangeNotifier {
 
   ConnectionStatus _lastStatus = ConnectionStatus.disconnected;
 
-  AppState() {
+  /// Gate 2 persistence layer (#11). Injected at construction so tests can
+  /// skip Hive entirely by passing nulls. Drill-lifecycle wiring lives in
+  /// later waves — this class only holds references for now.
+  final PreferencesRepository? preferences;
+  final SessionRepository? sessions;
+  final DrillLogRepository? drillLogs;
+
+  AppState({
+    this.preferences,
+    this.sessions,
+    this.drillLogs,
+  }) {
     _dataSub = bleService.incomingData.listen(_handleIncomingData);
     _statusSub = bleService.connectionStatus.listen(_handleConnectionStatus);
   }
