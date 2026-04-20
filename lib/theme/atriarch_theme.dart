@@ -1,6 +1,6 @@
-// Atriarch design tokens + light theme (Gate 1).
-// DARK theme + ambient-light auto-toggle land in Gate 2.
-// See DESIGN.md at repo root for the full spec.
+// Atriarch design tokens + dark tactical theme.
+// Light theme retained until Task 20 cleanup. See
+// docs/superpowers/specs/2026-04-20-tactical-redesign-design.md.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
