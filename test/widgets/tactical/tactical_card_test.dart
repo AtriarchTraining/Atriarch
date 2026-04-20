@@ -18,4 +18,21 @@ void main() {
     );
     expect(find.text('CHILD'), findsOneWidget);
   });
+
+  testWidgets('fires onTap when tapped', (tester) async {
+    var tapped = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAtriarchDarkTheme(),
+        home: Scaffold(
+          body: TacticalCard(
+            onTap: () => tapped++,
+            child: const Text('TAP_ME'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('TAP_ME'));
+    expect(tapped, 1);
+  });
 }

@@ -20,23 +20,28 @@ class TacticalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.atriarch;
-    final content = Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: background ?? tokens.bgCard,
-        border: accent != null
-            ? Border(left: BorderSide(color: accent!, width: 2))
-            : null,
-      ),
-      child: child,
-    );
+    final bg = background ?? tokens.bgCard;
+    final border = accent != null
+        ? Border(left: BorderSide(color: accent!, width: 2))
+        : null;
 
-    if (onTap == null) return content;
+    if (onTap == null) {
+      return Container(
+        padding: padding,
+        decoration: BoxDecoration(color: bg, border: border),
+        child: child,
+      );
+    }
+
     return Material(
-      color: Colors.transparent,
+      color: bg,
       child: InkWell(
         onTap: onTap,
-        child: content,
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(border: border),
+          child: child,
+        ),
       ),
     );
   }
