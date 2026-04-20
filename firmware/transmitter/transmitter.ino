@@ -182,9 +182,16 @@ void handleDiscovery() {
         int payload[MSG_SIZE] = {0, 0, 0};
         network.read(header, &payload, sizeof(payload));
         if (payload[0] == EVT_PONG) {
-          Serial.print("D/");
-          Serial.print(id);
-          Serial.println("/");
+          // Report the actual responder's decimal ID from the RF24Network
+          // header (header.from_node is the octal address of the sender).
+          // Do NOT trust the loop variable `id` — a late/queued PONG from
+          // an earlier PING could arrive during this window.
+          int responderId = octalToDecimalId(header.from_node);
+          if (responderId != 0) {
+            Serial.print("D/");
+            Serial.print(responderId);
+            Serial.println("/");
+          }
           break;
         }
       }

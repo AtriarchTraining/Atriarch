@@ -21,6 +21,12 @@ unsigned long identifyStart = 0;
 int identifyFlashCount = 0;
 bool identifyLedOn = false;
 
+// Late-hit flash is non-blocking: armed when a hit lands during COOLDOWN,
+// cleared in handleState() after LATE_HIT_FLASH_MS elapses. Loop budget
+// must stay <=5ms per iteration so we cannot delay() here.
+unsigned long lateHitFlashStart = 0;
+bool lateHitFlashActive = false;
+
 void setup() {
   Serial.begin(9600);
 
@@ -132,11 +138,13 @@ void handleIncoming() {
         } else {
           state = STATE_ACTIVE_SHOOT;
         }
+        lateHitFlashActive = false;  // clear any stale cooldown flash
         setLedGreen();
         break;
 
       case CMD_DEACTIVATE:
         state = STATE_IDLE;
+        lateHitFlashActive = false;  // clear any stale cooldown flash
         setLedOff();
         break;
     }
@@ -175,14 +183,31 @@ void handleState() {
       break;
 
     case STATE_COOLDOWN:
+      // Non-blocking late-hit flash: if armed and elapsed, turn LED off
+      // and clear the flag. Must run before the vibration check so a
+      // fresh hit can re-arm the flash on the same loop iteration.
+      if (lateHitFlashActive && (now - lateHitFlashStart >= LATE_HIT_FLASH_MS)) {
+        setLedOff();
+        lateHitFlashActive = false;
+      }
+
       if (now - cooldownStart >= COOLDOWN_MS) {
+        // Cooldown over — return to IDLE. If a late-hit flash was still
+        // active, clear it so we don't leak LED state into IDLE.
+        if (lateHitFlashActive) {
+          setLedOff();
+          lateHitFlashActive = false;
+        }
         state = STATE_IDLE;
       } else if (checkVibration()) {
         unsigned long elapsed = now - activationTime;
         setLedYellow();
         sendEvent(EVT_LATE_HIT, (int)(elapsed & 0x7FFF), 0);
-        delay(LATE_HIT_FLASH_MS);
-        setLedOff();
+        // Arm (or re-arm) the non-blocking flash timer. Replaces the
+        // previous blocking delay(LATE_HIT_FLASH_MS) which violated the
+        // <=5ms-per-iteration loop budget.
+        lateHitFlashStart = now;
+        lateHitFlashActive = true;
       }
       break;
 
