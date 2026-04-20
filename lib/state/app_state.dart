@@ -209,7 +209,7 @@ class AppState extends ChangeNotifier {
       _stoppingTimeout?.cancel();
       _stoppingTimeout = Timer(const Duration(seconds: 5), () {
         if (_phase == DrillPhase.stopping) {
-          // Target-side safe-stop (10s no-RF auto-lower) is the real safety
+          // Target-side safe-stop (5s no-RF auto-lower, BLE_SILENCE_TIMEOUT_MS) is the real safety
           // net; the app just moves the user to Results.
           final session = currentSession;
           if (session != null && session.isRunning) {
