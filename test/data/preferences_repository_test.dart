@@ -85,7 +85,7 @@ void main() {
     expect(await repo.getDefaultPresetId(), isNull);
   });
 
-  test('scalar settings getSetting/setSetting', () async {
+  test('scalar settings getSetting/setSetting/removeSetting', () async {
     await repo.setSetting<bool>('readyAudioEnabled', true);
     await repo.setSetting<double>('volume', 0.75);
     await repo.setSetting<String>('themeMode', 'dark');
@@ -98,6 +98,12 @@ void main() {
     expect(await repo.getSetting<int>('readyAudioEnabled'), isNull);
     // Missing key returns null.
     expect(await repo.getSetting<String>('nonexistent'), isNull);
+
+    // removeSetting deletes the key; subsequent read returns null.
+    await repo.removeSetting('themeMode');
+    expect(await repo.getSetting<String>('themeMode'), isNull);
+    // removeSetting is a no-op on missing keys.
+    await repo.removeSetting('never_set');
   });
 
   test('target names round-trip (addendum §4.B)', () async {

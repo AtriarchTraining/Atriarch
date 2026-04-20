@@ -62,11 +62,10 @@ class PreferencesRepository {
   }
 
   Future<void> setDefaultPresetId(String? id) async {
-    final box = _requireSettings();
     if (id == null) {
-      await box.delete(_kDefaultPresetId);
+      await removeSetting(_kDefaultPresetId);
     } else {
-      await box.put(_kDefaultPresetId, id);
+      await setSetting<String>(_kDefaultPresetId, id);
     }
   }
 
@@ -85,14 +84,14 @@ class PreferencesRepository {
     return null;
   }
 
-  /// Writes a scalar setting. Passing null removes the key.
-  Future<void> setSetting<T>(String key, T value) async {
-    final box = _requireSettings();
-    if (value == null) {
-      await box.delete(key);
-    } else {
-      await box.put(key, value);
-    }
+  /// Writes a non-null scalar setting. Use [removeSetting] to delete a key.
+  Future<void> setSetting<T extends Object>(String key, T value) async {
+    await _requireSettings().put(key, value);
+  }
+
+  /// Removes a scalar setting. No-op when the key is missing.
+  Future<void> removeSetting(String key) async {
+    await _requireSettings().delete(key);
   }
 
   // ----------------------------------------------------------- Target names

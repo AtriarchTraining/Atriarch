@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../data/drill_log_repository.dart';
+import '../data/in_memory_repositories.dart';
 import '../data/preferences_repository.dart';
 import '../data/session_repository.dart';
 import '../services/ble_service.dart';
@@ -51,20 +52,35 @@ class AppState extends ChangeNotifier {
 
   ConnectionStatus _lastStatus = ConnectionStatus.disconnected;
 
-  /// Gate 2 persistence layer (#11). Injected at construction so tests can
-  /// skip Hive entirely by passing nulls. Drill-lifecycle wiring lives in
-  /// later waves — this class only holds references for now.
-  final PreferencesRepository? preferences;
-  final SessionRepository? sessions;
-  final DrillLogRepository? drillLogs;
+  /// Gate 2 persistence layer (#11). Non-null so Wave 2 drill-lifecycle
+  /// wiring can call them without bang-operator NPEs; tests use
+  /// [AppState.forTest] to get in-memory stand-ins.
+  final PreferencesRepository preferences;
+  final SessionRepository sessions;
+  final DrillLogRepository drillLogs;
 
   AppState({
-    this.preferences,
-    this.sessions,
-    this.drillLogs,
+    required this.preferences,
+    required this.sessions,
+    required this.drillLogs,
   }) {
     _dataSub = bleService.incomingData.listen(_handleIncomingData);
     _statusSub = bleService.connectionStatus.listen(_handleConnectionStatus);
+  }
+
+  /// Test seam. Supply real or mock repositories; any omitted argument gets
+  /// an in-memory stand-in from [in_memory_repositories.dart]. Lets widget
+  /// and unit tests skip `Hive.init(tempDir)` boilerplate.
+  factory AppState.forTest({
+    PreferencesRepository? preferences,
+    SessionRepository? sessions,
+    DrillLogRepository? drillLogs,
+  }) {
+    return AppState(
+      preferences: preferences ?? InMemoryPreferencesRepository(),
+      sessions: sessions ?? InMemorySessionRepository(),
+      drillLogs: drillLogs ?? InMemoryDrillLogRepository(),
+    );
   }
 
   void _setPhase(DrillPhase next) {
