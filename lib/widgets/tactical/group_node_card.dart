@@ -26,26 +26,26 @@ class GroupNodeCard extends StatelessWidget {
         'NODE_${(groupIndex + 1).toString().padLeft(2, '0')}';
     final groupLabel = 'GROUP ${(groupIndex + 1).toString().padLeft(2, '0')}';
 
+    final bg = assigned
+        ? tokens.bgElevated
+        : tokens.bgCard.withValues(alpha: 0.5);
+    final border = selected
+        ? Border.all(color: tokens.statusHit, width: 2)
+        : Border(
+            left: BorderSide(
+              color: assigned
+                  ? groupColor
+                  : tokens.border.withValues(alpha: 0.2),
+              width: 2,
+            ),
+          );
+
     return Material(
-      color: Colors.transparent,
+      color: bg,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          decoration: BoxDecoration(
-            color: assigned
-                ? tokens.bgElevated
-                : tokens.bgCard.withValues(alpha: 0.5),
-            border: selected
-                ? Border.all(color: tokens.statusHit, width: 2)
-                : Border(
-                    left: BorderSide(
-                      color: assigned
-                          ? groupColor
-                          : tokens.border.withValues(alpha: 0.2),
-                      width: 2,
-                    ),
-                  ),
-          ),
+          decoration: BoxDecoration(border: border),
           padding: const EdgeInsets.all(AtriarchSpacing.md),
           child: Stack(
             children: [

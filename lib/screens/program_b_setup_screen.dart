@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/drill_config.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
+import '../widgets/tactical/arming_failed_banner.dart';
 import '../widgets/tactical/tactical_card.dart';
 import '../widgets/tactical/tactical_min_max_card.dart';
 import '../widgets/tactical/tactical_primary_button.dart';
@@ -29,6 +30,7 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
   final iterCtrl = TextEditingController(text: '5');
 
   DrillConfig? _lastConfig;
+  AppState? _boundState;
 
   @override
   void initState() {
@@ -39,15 +41,16 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<AppState>().addListener(_onPhaseChanged);
+      final state = context.read<AppState>();
+      _boundState = state;
+      state.addListener(_onPhaseChanged);
     });
   }
 
   @override
   void dispose() {
-    try {
-      context.read<AppState>().removeListener(_onPhaseChanged);
-    } catch (_) {}
+    _boundState?.removeListener(_onPhaseChanged);
+    _boundState = null;
     super.dispose();
   }
 
@@ -217,7 +220,7 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
                   padding: const EdgeInsets.only(
                     bottom: AtriarchSpacing.md,
                   ),
-                  child: _ArmingFailedBanner(onRetry: _retryDrill),
+                  child: TacticalArmingFailedBanner(onRetry: _retryDrill),
                 );
               }
               return const SizedBox.shrink();
@@ -261,32 +264,3 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
   }
 }
 
-class _ArmingFailedBanner extends StatelessWidget {
-  final VoidCallback onRetry;
-  const _ArmingFailedBanner({required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.atriarch;
-    return TacticalCard(
-      accent: tokens.statusViolation,
-      child: Row(
-        children: [
-          Icon(Icons.error_outline, color: tokens.statusViolation),
-          const SizedBox(width: AtriarchSpacing.md),
-          Expanded(
-            child: Text(
-              'NO RESPONSE FROM TRANSMITTER // CHECK CONNECTION',
-              style: AtriarchText.labelTiny(color: tokens.textPrimary),
-            ),
-          ),
-          const SizedBox(width: AtriarchSpacing.sm),
-          OutlinedButton(
-            onPressed: onRetry,
-            child: const Text('RETRY'),
-          ),
-        ],
-      ),
-    );
-  }
-}

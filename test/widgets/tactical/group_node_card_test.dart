@@ -45,4 +45,24 @@ void main() {
     expect(find.text('STANDBY'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle), findsNothing);
   });
+
+  testWidgets('fires onTap when tapped', (tester) async {
+    var tapped = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAtriarchDarkTheme(),
+        home: Scaffold(
+          body: GroupNodeCard(
+            groupIndex: 0,
+            targetIds: const [],
+            selected: false,
+            onTap: () => tapped++,
+            onRemoveTarget: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byType(GroupNodeCard));
+    expect(tapped, 1);
+  });
 }
