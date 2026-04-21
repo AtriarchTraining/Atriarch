@@ -71,7 +71,18 @@
 #define LATE_HIT_FLASH_MS   200
 
 // --- Vibration ---
-#define VIB_THRESHOLD       20  // pulseIn microseconds; tune per hardware
+#define VIB_THRESHOLD       20  // pulseIn microseconds; legacy, unused by digitalRead detection
+
+// SW-420 modules ship with two output polarities. To figure out which one
+// your module is, observe the DO-LED on the sensor module at rest and on tap:
+//   - DO-LED OFF at rest, briefly ON when you tap  ->  set to LOW  (D0 is
+//       active-LOW on trigger — comparator sinks current only during impact)
+//   - DO-LED ON  at rest, briefly OFF when you tap ->  set to HIGH (D0 is
+//       active-HIGH on trigger — comparator sinks at rest, releases on impact)
+//
+// Jeremy's 2026-04-21 batch is the HIGH variant. If you install a different
+// module and hits stop registering OR targets self-trigger at rest, flip this.
+#define VIB_TRIGGER_LEVEL   HIGH
 
 // --- NRF24 Message Size ---
 // BREAKING: bumped from 3 to 4. payload[3] = cmdSeq for ACK correlation.

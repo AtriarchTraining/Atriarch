@@ -121,22 +121,20 @@ void allOff() {
 
 // Hit detection via SW-420 vibration switch + LM393 comparator.
 //
-// Polarity (ACTIVE LOW): VIBRATION_PIN is pulled HIGH by internal ATmega
-// pullup (set in setup via pinMode INPUT_PULLUP). SW-420's LM393
-// comparator output pulls the line LOW on vibration. So a digitalRead
-// returning LOW == hit detected.
-//
-// Earlier attempts used pulseIn(HIGH) (missed pulses due to narrow 1ms
-// window vs 5-10ms polling cadence) then digitalRead(==HIGH) without
-// pullup (read floating noise — false positives one run, no detection
-// the next). Both failed for the same root cause: an untamed floating
-// input pin. INPUT_PULLUP + LOW-detection nails the idle state.
+// VIBRATION_PIN uses internal ATmega pullup (pinMode INPUT_PULLUP in setup).
+// Trigger polarity is configurable via VIB_TRIGGER_LEVEL in config.h because
+// SW-420 modules ship with both polarities depending on manufacturer:
+//   - Active-LOW  modules: D0 pulled HIGH at rest by onboard pullup, LM393
+//                          sinks briefly on impact -> pin LOW == hit.
+//   - Active-HIGH modules: D0 actively driven LOW at rest by LM393, released
+//                          briefly on impact -> pin HIGH == hit.
+// See config.h for how to identify which variant a physical unit has.
 //
 // VIB_DEBOUNCE_MS (100ms) keeps a single long pulse from being counted
 // as multiple hits. Sensitivity is tuned by the trimmer pot on the
 // SW-420 module, not firmware.
 bool checkVibration() {
-  if (digitalRead(VIBRATION_PIN) == LOW) {
+  if (digitalRead(VIBRATION_PIN) == VIB_TRIGGER_LEVEL) {
     unsigned long now = millis();
     if (now - lastVibTime > VIB_DEBOUNCE_MS) {
       lastVibTime = now;
