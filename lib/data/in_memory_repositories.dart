@@ -18,6 +18,7 @@ class InMemoryPreferencesRepository implements PreferencesRepository {
   final Map<String, DrillPreset> _presets = <String, DrillPreset>{};
   final Map<String, Object?> _settings = <String, Object?>{};
   final Map<int, String> _targetNames = <int, String>{};
+  final Set<int> _removedTargetIds = <int>{};
   bool _initialized = false;
 
   @override
@@ -92,6 +93,17 @@ class InMemoryPreferencesRepository implements PreferencesRepository {
     } else {
       _targetNames[targetId] = displayName;
     }
+  }
+
+  @override
+  Future<Set<int>> getRemovedTargetIds() async =>
+      Set<int>.from(_removedTargetIds);
+
+  @override
+  Future<void> setRemovedTargetIds(Set<int> ids) async {
+    _removedTargetIds
+      ..clear()
+      ..addAll(ids);
   }
 }
 

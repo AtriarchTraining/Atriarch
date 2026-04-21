@@ -19,6 +19,7 @@ class PreferencesRepository {
 
   static const String _kDefaultPresetId = 'default_preset_id';
   static const String _kTargetNames = 'target_names';
+  static const String _kRemovedTargetIds = 'removed_target_ids';
 
   Box<DrillPreset>? _presets;
   Box<dynamic>? _settings;
@@ -119,6 +120,32 @@ class PreferencesRepository {
       current[key] = displayName;
     }
     await box.put(_kTargetNames, current);
+  }
+
+  // ------------------------------------------------------- Removed target ids
+
+  /// Soft-deleted target ids. Hidden from the chip list unless the user
+  /// toggles "Show removed" in the AppBar overflow (addendum §4.B).
+  /// Stored as a comma-separated string in the `app_settings` box so Hive
+  /// can round-trip it without the `List<dynamic>` type-strictness gotcha.
+  Future<Set<int>> getRemovedTargetIds() async {
+    final raw = _requireSettings().get(_kRemovedTargetIds);
+    if (raw is! String || raw.isEmpty) return <int>{};
+    return raw
+        .split(',')
+        .map((s) => int.tryParse(s.trim()))
+        .whereType<int>()
+        .toSet();
+  }
+
+  Future<void> setRemovedTargetIds(Set<int> ids) async {
+    final box = _requireSettings();
+    if (ids.isEmpty) {
+      await box.delete(_kRemovedTargetIds);
+    } else {
+      final sorted = ids.toList()..sort();
+      await box.put(_kRemovedTargetIds, sorted.join(','));
+    }
   }
 
   // ----------------------------------------------------------------- Guards

@@ -131,6 +131,31 @@ void main() {
     expect(await repo.getTargetNames(), isEmpty);
   });
 
+  test('removed target ids round-trip (addendum §4.B)', () async {
+    expect(await repo.getRemovedTargetIds(), isEmpty);
+
+    await repo.setRemovedTargetIds({2, 5, 11});
+    expect(await repo.getRemovedTargetIds(), {2, 5, 11});
+
+    // Overwrite shrinks the set.
+    await repo.setRemovedTargetIds({5});
+    expect(await repo.getRemovedTargetIds(), {5});
+
+    // Empty clears.
+    await repo.setRemovedTargetIds(<int>{});
+    expect(await repo.getRemovedTargetIds(), isEmpty);
+  });
+
+  test('removed target ids survive close/reopen', () async {
+    await repo.setRemovedTargetIds({3, 9});
+    await repo.close();
+
+    final reopened = PreferencesRepository();
+    await reopened.init();
+    expect(await reopened.getRemovedTargetIds(), {3, 9});
+    await reopened.close();
+  });
+
   test('data persists across close/reopen', () async {
     await repo.savePreset(makePreset('persist'));
     await repo.setTargetName(7, 'Lucky');

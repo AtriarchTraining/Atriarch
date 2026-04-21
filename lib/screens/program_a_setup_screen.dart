@@ -6,6 +6,7 @@ import '../models/target_group.dart';
 import '../theme/atriarch_theme.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/inc_dec.dart';
+import '../widgets/target_actions_sheet.dart';
 import '../widgets/target_chip.dart';
 import 'drill_running_screen.dart';
 
@@ -137,11 +138,66 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     });
   }
 
+  void _openTargetActions(int targetId) {
+    final state = context.read<AppState>();
+    final target = state.targets.firstWhere(
+      (t) => t.id == targetId,
+      orElse: () => throw StateError('Target $targetId vanished'),
+    );
+    final resolver = state.targetNameResolver;
+    final isRemoved = state.isRemoved(targetId);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return TargetActionsSheet(
+          target: target,
+          resolver: resolver,
+          isRemoved: isRemoved,
+          onIdentify: () => state.identifyTarget(targetId),
+          onRenameSaved: (name) => state.setTargetName(targetId, name),
+          onToggleNoShoot: () => state.toggleNoShoot(targetId),
+          onRemoveConfirmed: () {
+            state.removeTarget(targetId);
+            // Also drop the target from any group assignment locally.
+            setState(() {
+              for (final g in groups) {
+                g.targetIds.remove(targetId);
+              }
+            });
+          },
+          onRestoreConfirmed: () => state.restoreTarget(targetId),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.atriarch;
     return Scaffold(
-      appBar: AppBar(title: const Text('Program A - Group Mode')),
+      appBar: AppBar(
+        title: const Text('Program A - Group Mode'),
+        actions: [
+          Consumer<AppState>(
+            builder: (_, state, __) {
+              return PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) {
+                  if (value == 'show_removed') state.toggleShowRemoved();
+                },
+                itemBuilder: (_) => [
+                  CheckedPopupMenuItem<String>(
+                    value: 'show_removed',
+                    checked: state.showRemoved,
+                    child: const Text('Show removed'),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AtriarchSpacing.lg),
         child: Column(
@@ -189,10 +245,13 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
             Consumer<AppState>(
               builder: (_, state, __) {
                 final assigned = groups.expand((g) => g.targetIds).toSet();
-                final unassigned = state.targets
+                final resolver = state.targetNameResolver;
+                // Filter by visibleTargets so removed chips only show when
+                // the "Show removed" overflow toggle is on.
+                final pool = state.visibleTargets
                     .where((t) => t.isOnline && !assigned.contains(t.id))
                     .toList();
-                if (unassigned.isEmpty) {
+                if (pool.isEmpty) {
                   return Text(
                     'All online targets assigned.',
                     style: TextStyle(color: tokens.textTertiary),
@@ -201,10 +260,15 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
                 return Wrap(
                   spacing: AtriarchSpacing.sm,
                   runSpacing: AtriarchSpacing.sm,
-                  children: unassigned
+                  children: pool
                       .map((t) => TargetChip(
                             target: t,
-                            onTap: () => _assignTargetToGroup(t.id),
+                            displayName: resolver.display(t.id),
+                            isRemoved: state.isRemoved(t.id),
+                            onTap: state.isRemoved(t.id)
+                                ? () => _openTargetActions(t.id)
+                                : () => _assignTargetToGroup(t.id),
+                            onLongPress: () => _openTargetActions(t.id),
                           ))
                       .toList(),
                 );

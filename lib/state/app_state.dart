@@ -10,6 +10,7 @@ import '../models/target_unit.dart';
 import '../models/drill_config.dart';
 import '../models/drill_session.dart';
 import '../models/session_event.dart';
+import '../util/target_name_resolver.dart';
 
 /// Drill phase machine (Gate 1 §1.3 / Addendum §3 UI state sync).
 ///
@@ -59,6 +60,28 @@ class AppState extends ChangeNotifier {
   final SessionRepository sessions;
   final DrillLogRepository drillLogs;
 
+  /// Live snapshot of saved target names (id -> user-assigned display name).
+  /// Loaded from [preferences] on construction; kept in sync by
+  /// [setTargetName]. Consumers should render via [targetNameResolver].
+  final Map<int, String> _targetNames = <int, String>{};
+
+  /// Live snapshot of soft-deleted target ids. Chips for these ids are
+  /// hidden from the setup screens unless [showRemoved] is toggled on.
+  final Set<int> _removedTargetIds = <int>{};
+
+  bool _showRemoved = false;
+
+  /// AppBar overflow "Show removed" toggle state (addendum §4.B).
+  bool get showRemoved => _showRemoved;
+
+  /// Live resolver built from the in-memory names map. Cheap enough to
+  /// rebuild per caller; callers don't need to cache.
+  TargetNameResolver get targetNameResolver =>
+      TargetNameResolver(Map<int, String>.unmodifiable(_targetNames));
+
+  /// Read-only view of the removed-id set. Useful for "Restore" UI.
+  Set<int> get removedTargetIds => Set<int>.unmodifiable(_removedTargetIds);
+
   AppState({
     required this.preferences,
     required this.sessions,
@@ -66,6 +89,26 @@ class AppState extends ChangeNotifier {
   }) {
     _dataSub = bleService.incomingData.listen(_handleIncomingData);
     _statusSub = bleService.connectionStatus.listen(_handleConnectionStatus);
+    // Eagerly hydrate target-name + removed-id snapshots so UI gets the
+    // real labels on first frame. Safe to fire-and-forget: the preferences
+    // repo surfaces empty defaults before init completes.
+    unawaited(_hydrateTargetPrefs());
+  }
+
+  Future<void> _hydrateTargetPrefs() async {
+    try {
+      final names = await preferences.getTargetNames();
+      final removed = await preferences.getRemovedTargetIds();
+      _targetNames
+        ..clear()
+        ..addAll(names);
+      _removedTargetIds
+        ..clear()
+        ..addAll(removed);
+      notifyListeners();
+    } catch (_) {
+      // Best-effort; absence of saved names just means fallback `T{id}` labels.
+    }
   }
 
   /// Test seam. Supply real or mock repositories; any omitted argument gets
@@ -264,6 +307,66 @@ class AppState extends ChangeNotifier {
     _stoppingTimeout?.cancel();
     _setPhase(DrillPhase.finished);
   }
+
+  // -------------------------------------------------- User-named targets (§4.B)
+
+  /// Persist a custom display name for [targetId] and update the in-memory
+  /// snapshot so the resolver returns it immediately. Pass null or empty to
+  /// revert to the `T{id}` fallback.
+  Future<void> setTargetName(int targetId, String? name) async {
+    final trimmed = name?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      _targetNames.remove(targetId);
+      await preferences.setTargetName(targetId, null);
+    } else {
+      _targetNames[targetId] = trimmed;
+      await preferences.setTargetName(targetId, trimmed);
+    }
+    notifyListeners();
+  }
+
+  /// Flip [TargetUnit.isNoShoot] in place. Transient drill-setup state;
+  /// not persisted (addendum §4.B — cleared on reconnect).
+  void toggleNoShoot(int targetId) {
+    for (final t in targets) {
+      if (t.id == targetId) {
+        t.isNoShoot = !t.isNoShoot;
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  /// Soft-delete [targetId] from the fleet. Persisted so removals survive
+  /// relaunch; reversible via [restoreTarget] or the AppBar "Show removed"
+  /// toggle.
+  Future<void> removeTarget(int targetId) async {
+    _removedTargetIds.add(targetId);
+    await preferences.setRemovedTargetIds(_removedTargetIds);
+    notifyListeners();
+  }
+
+  Future<void> restoreTarget(int targetId) async {
+    _removedTargetIds.remove(targetId);
+    await preferences.setRemovedTargetIds(_removedTargetIds);
+    notifyListeners();
+  }
+
+  /// AppBar overflow toggle: show soft-deleted targets in the chip list.
+  void toggleShowRemoved() {
+    _showRemoved = !_showRemoved;
+    notifyListeners();
+  }
+
+  /// Targets filtered through the removed-ids set — what the setup screen
+  /// should render. When [showRemoved] is on, all targets are returned
+  /// (callers render the REMOVED pill via [isRemoved]).
+  List<TargetUnit> get visibleTargets {
+    if (_showRemoved) return targets;
+    return targets.where((t) => !_removedTargetIds.contains(t.id)).toList();
+  }
+
+  bool isRemoved(int targetId) => _removedTargetIds.contains(targetId);
 
   @override
   void dispose() {
