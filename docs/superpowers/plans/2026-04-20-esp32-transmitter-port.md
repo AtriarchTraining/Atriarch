@@ -1,9 +1,13 @@
 ---
-status: ACTIVE — Phase 1 toolchain complete (2026-04-20); awaiting hardware for Phase 2
+status: ACTIVE — Phases 1+2 complete (2026-04-20); Phase 3 agent dispatched
 installed:
   esp32_core: 3.3.8
   nimble_arduino: 2.5.0
   fqbn: esp32:esp32:esp32
+verification:
+  phase_1_toolchain: PASS (esp32 core + NimBLE installed, FQBN resolves)
+  phase_1_blink_test: PASS (ESP32 D0WD-V3 rev 3.1 MAC f4:2d:c9:6a:9b:08, blink sketch uploaded and running)
+  phase_2_hardware: PASS (NRF24 probe sketch confirmed isChipConnected=true; fast-blink visual confirmed by Jeremy)
 ---
 
 # ESP32 Transmitter Port Plan (Gate 1 #10.5)

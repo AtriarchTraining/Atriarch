@@ -222,21 +222,27 @@ void readBle() {
 
     if (c == '/' && serialPos >= 2) {
       if (strncmp(serialBuf, "DISC/", 5) == 0) {
+        Serial.println("[CMD] DISC/ received");
         handleDiscovery();
         serialPos = 0;
       } else if (strncmp(serialBuf, "IDENT/", 6) == 0) {
+        Serial.println("[CMD] IDENT/ received");
         handleIdentify();
         serialPos = 0;
       } else if (strncmp(serialBuf, "STOP/", 5) == 0) {
+        Serial.println("[CMD] STOP/ received");
         handleStop();
         serialPos = 0;
       } else if (strncmp(serialBuf, "SNAP/", 5) == 0) {
+        Serial.println("[CMD] SNAP/ received");
         handleSnap();
         serialPos = 0;
       } else if (serialBuf[0] == 'A' && serialBuf[1] == '/' && isCommandComplete(serialBuf, 'A')) {
+        Serial.println("[CMD] Program A received");
         handleProgramA();
         serialPos = 0;
       } else if (serialBuf[0] == 'B' && serialBuf[1] == '/' && isCommandComplete(serialBuf, 'B')) {
+        Serial.println("[CMD] Program B received");
         handleProgramB();
         serialPos = 0;
       }
@@ -281,7 +287,11 @@ int allocateCmdSeq() {
 void sendRaw(int decimalId, int cmd, int p1, int p2, int seq) {
   if (decimalId < 1 || decimalId > MAX_TARGETS) return;
   uint16_t addr = addressMap[decimalId];
-  int payload[MSG_SIZE] = {cmd, p1, p2, seq};
+  // CRITICAL: target firmware runs on ATmega328P where `int` is 16-bit.
+  // ESP32's `int` is 32-bit, so using `int payload[]` here sends 16 bytes
+  // instead of 8 and every value gets misinterpreted by the target. Use
+  // int16_t to match the AVR wire format exactly.
+  int16_t payload[MSG_SIZE] = {(int16_t)cmd, (int16_t)p1, (int16_t)p2, (int16_t)seq};
   RF24NetworkHeader header(addr);
   network.write(header, &payload, sizeof(payload));
 }
@@ -328,6 +338,8 @@ int getRequiredHitsForTarget(int decId) {
 // ============================================================
 
 void handleDiscovery() {
+  Serial.println("[DISC] scan start — pinging 30 addresses");
+  int found = 0;
   for (int id = 1; id <= MAX_TARGETS; id++) {
     sendToTarget(id, CMD_PING, 0, 0);
 
@@ -336,7 +348,7 @@ void handleDiscovery() {
       network.update();
       if (network.available()) {
         RF24NetworkHeader header;
-        int payload[MSG_SIZE] = {0, 0, 0, 0};
+        int16_t payload[MSG_SIZE] = {0, 0, 0, 0};
         network.read(header, &payload, sizeof(payload));
 
         // A target that is awake will emit EVT_ACK (seq-correlated) AND
@@ -345,6 +357,8 @@ void handleDiscovery() {
         // EVT_ACK and EVT_HB also prime targetOnline / lastHbMs so the
         // heartbeat tracker doesn't flag the target as unreachable later.
         int responderId = octalToDecimalId(header.from_node);
+        Serial.printf("[DISC] rx from_node=0%o evt=%d responderId=%d\n",
+                      header.from_node, (int)payload[0], responderId);
         if (responderId != 0 &&
             (payload[0] == EVT_PONG || payload[0] == EVT_ACK || payload[0] == EVT_HB)) {
           lastHbMs[responderId] = millis();
@@ -354,18 +368,17 @@ void handleDiscovery() {
         }
 
         if (payload[0] == EVT_PONG) {
-          // Report the actual responder's decimal ID from the RF24Network
-          // header (header.from_node is the octal address of the sender).
-          // Do NOT trust the loop variable `id` — a late/queued PONG from
-          // an earlier PING could arrive during this window.
           if (responderId != 0) {
+            Serial.printf("[DISC] PONG from T%d -> emit D/%d/\n", responderId, responderId);
             ble.printf("D/%d/\n", responderId);
+            found++;
           }
           break;
         }
       }
     }
   }
+  Serial.printf("[DISC] scan complete — %d target(s) responded, emitting DDONE/\n", found);
   ble.println("DDONE/");
 }
 
@@ -593,6 +606,8 @@ void tickGroups() {
         // Send CMD_ACTIVATE through the ACK journal. "ACT/" is NOT emitted
         // here — per the eng plan it's emitted only after the target ACKs
         // the activation (see onAckReceived).
+        Serial.printf("[TX] sending CMD_ACTIVATE to T%d hits=%d color=%d\n",
+                      grp->activeTargetAddr, grp->requiredHits, colorMode);
         sendCmdWithAck(grp->activeTargetAddr, CMD_ACTIVATE, grp->requiredHits, colorMode);
         drillActive[grp->activeTargetAddr] = true;
 
@@ -645,7 +660,8 @@ void tickGroups() {
 void handleNrfEvents() {
   while (network.available()) {
     RF24NetworkHeader header;
-    int payload[MSG_SIZE] = {0, 0, 0, 0};
+    // int16_t to match target AVR's 16-bit int wire format.
+    int16_t payload[MSG_SIZE] = {0, 0, 0, 0};
     network.read(header, &payload, sizeof(payload));
 
     int decId = octalToDecimalId(header.from_node);
@@ -682,10 +698,12 @@ void handleNrfEvents() {
         break;
 
       case EVT_HIT:
+        Serial.printf("[HIT] T%d hit %d of %d\n", decId, (int)payload[1], getRequiredHitsForTarget(decId));
         ble.printf("HIT/%d/%d/%d/\n", decId, payload[1], getRequiredHitsForTarget(decId));
         break;
 
       case EVT_COMPLETE: {
+        Serial.printf("[DONE] T%d complete in %dms\n", decId, (int)payload[2]);
         ble.printf("DONE/%d/%d/\n", decId, payload[2]);
 
         // Target reported completion — no longer active in the drill.
@@ -708,10 +726,12 @@ void handleNrfEvents() {
       }
 
       case EVT_NOSHOOT_HIT:
+        Serial.printf("[NS] T%d no-shoot violation\n", decId);
         ble.printf("NS/%d/\n", decId);
         break;
 
       case EVT_LATE_HIT:
+        Serial.printf("[LATE] T%d late hit\n", decId);
         ble.printf("LATE/%d/\n", decId);
         break;
     }
@@ -749,6 +769,7 @@ void serviceAckRetries() {
 void onAckReceived(int decimalId, int cmd) {
   switch (cmd) {
     case CMD_ACTIVATE:
+      Serial.printf("[ACT] T%d activated (CMD_ACTIVATE ACKed)\n", decimalId);
       ble.printf("ACT/%d/\n", decimalId);
       break;
     case CMD_DEACTIVATE:
@@ -771,6 +792,7 @@ void onAckReceived(int decimalId, int cmd) {
 void onAckFailed(int decimalId, int cmd) {
   if (decimalId < 1 || decimalId > MAX_TARGETS) return;
 
+  Serial.printf("[ACK-FAIL] T%d cmd=%d (retries exhausted, marked unreachable)\n", decimalId, cmd);
   targetUnreachable[decimalId] = true;
 
   if (cmd == CMD_DEACTIVATE) {
