@@ -51,7 +51,14 @@ void setup() {
   digitalWrite(RELAY_PIN, LOW);
 
   // Vibration sensor
-  pinMode(VIBRATION_PIN, INPUT);
+  // INPUT_PULLUP: SW-420 modules use an open-collector LM393 output —
+  // nominally pulled HIGH by an on-module 10K resistor (idle) and pulled
+  // LOW by the comparator on vibration. Enabling the ATmega's internal
+  // ~30K pullup guarantees a stable HIGH idle state even if the module's
+  // on-board pullup is weak, missing, or has a cold solder joint. This
+  // inverts the polarity: hits are detected as LOW, not HIGH (see
+  // checkVibration).
+  pinMode(VIBRATION_PIN, INPUT_PULLUP);
 
   randomSeed(analogRead(0));
 
@@ -75,39 +82,61 @@ void loop() {
   handleSafeStop();
 }
 
-void setLedGreen() {
-  fill_solid(leds, NUM_LEDS, CRGB::Green);
-  FastLED.show();
-  digitalWrite(RELAY_PIN, HIGH);
-}
+// ----- LED outputs split into two independent channels ---------------------
+//
+// Per Jeremy's spec (2026-04-21): the RELAY drives an external WHITE LED
+// strip and is used to indicate a target is currently "active" (awaiting a
+// shooter). The on-board WS2812 RGB strip is RESERVED for feedback signals
+// only — no-shoot violations (red), late hits in cooldown (yellow), and
+// identify flashes (white). A successful good hit does NOT flash the RGB;
+// it just deactivates (relay off).
 
-void setLedRed() {
+// Relay: drives the external 12V/5V white LED rail.
+void setRelayOn()  { digitalWrite(RELAY_PIN, HIGH); }
+void setRelayOff() { digitalWrite(RELAY_PIN, LOW);  }
+
+// WS2812 RGB strip: feedback signals only.
+void setRgbRed() {
   fill_solid(leds, NUM_LEDS, CRGB::Red);
   FastLED.show();
-  digitalWrite(RELAY_PIN, HIGH);
 }
-
-void setLedYellow() {
+void setRgbYellow() {
   fill_solid(leds, NUM_LEDS, CRGB::Yellow);
   FastLED.show();
-  digitalWrite(RELAY_PIN, HIGH);
 }
-
-void setLedWhite() {
+void setRgbWhite() {
   fill_solid(leds, NUM_LEDS, CRGB::White);
   FastLED.show();
-  digitalWrite(RELAY_PIN, HIGH);
 }
-
-void setLedOff() {
+void setRgbOff() {
   fill_solid(leds, NUM_LEDS, CRGB::Black);
   FastLED.show();
-  digitalWrite(RELAY_PIN, LOW);
 }
 
+// Convenience for "fully deactivate" — relay off AND RGB off.
+void allOff() {
+  setRelayOff();
+  setRgbOff();
+}
+
+// Hit detection via SW-420 vibration switch + LM393 comparator.
+//
+// Polarity (ACTIVE LOW): VIBRATION_PIN is pulled HIGH by internal ATmega
+// pullup (set in setup via pinMode INPUT_PULLUP). SW-420's LM393
+// comparator output pulls the line LOW on vibration. So a digitalRead
+// returning LOW == hit detected.
+//
+// Earlier attempts used pulseIn(HIGH) (missed pulses due to narrow 1ms
+// window vs 5-10ms polling cadence) then digitalRead(==HIGH) without
+// pullup (read floating noise — false positives one run, no detection
+// the next). Both failed for the same root cause: an untamed floating
+// input pin. INPUT_PULLUP + LOW-detection nails the idle state.
+//
+// VIB_DEBOUNCE_MS (100ms) keeps a single long pulse from being counted
+// as multiple hits. Sensitivity is tuned by the trimmer pot on the
+// SW-420 module, not firmware.
 bool checkVibration() {
-  long measurement = pulseIn(VIBRATION_PIN, HIGH, 1000); // 1ms timeout
-  if (measurement > VIB_THRESHOLD) {
+  if (digitalRead(VIBRATION_PIN) == LOW) {
     unsigned long now = millis();
     if (now - lastVibTime > VIB_DEBOUNCE_MS) {
       lastVibTime = now;
@@ -160,7 +189,7 @@ void handleSafeStop() {
   if (state == STATE_IDLE) return;
   unsigned long now = millis();
   if (now - lastRxMs > BLE_SILENCE_TIMEOUT_MS) {
-    setLedOff();
+    allOff();
     lateHitFlashActive = false;
     state = STATE_IDLE;
     // lastRxMs stays old until the next packet lands, which resets it.
@@ -221,13 +250,17 @@ void handleIncoming() {
           state = STATE_ACTIVE_SHOOT;
         }
         lateHitFlashActive = false;  // clear any stale cooldown flash
-        setLedGreen();
+        // Activation: turn on the white LED via relay. RGB stays off —
+        // no-shoot targets are visually indistinguishable from shoot targets
+        // during the active phase (deliberate per the design doc).
+        setRelayOn();
+        setRgbOff();
         break;
 
       case CMD_DEACTIVATE:
         state = STATE_IDLE;
         lateHitFlashActive = false;  // clear any stale cooldown flash
-        setLedOff();
+        allOff();
         break;
     }
   }
@@ -247,7 +280,10 @@ void handleState() {
         unsigned long elapsed = now - activationTime;
         if (hitCount >= requiredHits) {
           sendEvent(EVT_COMPLETE, hitCount, (int)(elapsed & 0x7FFF));
-          setLedOff();
+          // Good hit completing the iteration: just turn off. Per spec,
+          // the RGB does NOT flash green — a clean deactivate is the
+          // positive-feedback signal.
+          allOff();
           cooldownStart = now;
           state = STATE_COOLDOWN;
         } else {
@@ -259,31 +295,38 @@ void handleState() {
     case STATE_ACTIVE_NOSHOOT:
       if (checkVibration()) {
         unsigned long elapsed = now - activationTime;
-        setLedRed();
+        // No-shoot violation: RGB goes solid red. Relay stays ON — the
+        // target remains active until the transmitter's timer fires a
+        // CMD_DEACTIVATE. The red overlay is what signals "you hit a
+        // no-shoot" to the shooter.
+        setRgbRed();
         sendEvent(EVT_NOSHOOT_HIT, (int)(elapsed & 0x7FFF), 0);
       }
       break;
 
     case STATE_COOLDOWN:
-      // Non-blocking late-hit flash: if armed and elapsed, turn LED off
-      // and clear the flag. Must run before the vibration check so a
-      // fresh hit can re-arm the flash on the same loop iteration.
+      // Non-blocking late-hit flash: if armed and elapsed, clear the RGB
+      // and the flag. Relay is already off from COMPLETE. Must run before
+      // the vibration check so a fresh hit can re-arm on the same loop.
       if (lateHitFlashActive && (now - lateHitFlashStart >= LATE_HIT_FLASH_MS)) {
-        setLedOff();
+        setRgbOff();
         lateHitFlashActive = false;
       }
 
       if (now - cooldownStart >= COOLDOWN_MS) {
         // Cooldown over — return to IDLE. If a late-hit flash was still
-        // active, clear it so we don't leak LED state into IDLE.
+        // active, clear it so we don't leak RGB state into IDLE.
         if (lateHitFlashActive) {
-          setLedOff();
+          setRgbOff();
           lateHitFlashActive = false;
         }
         state = STATE_IDLE;
       } else if (checkVibration()) {
         unsigned long elapsed = now - activationTime;
-        setLedYellow();
+        // Late hit (vibration during cooldown): flash RGB yellow. Relay
+        // stays off — the iteration is over, we're just signaling that
+        // the shooter hit after the time expired.
+        setRgbYellow();
         sendEvent(EVT_LATE_HIT, (int)(elapsed & 0x7FFF), 0);
         // Arm (or re-arm) the non-blocking flash timer. Replaces the
         // previous blocking delay(LATE_HIT_FLASH_MS) which violated the
@@ -300,21 +343,25 @@ void handleState() {
 }
 
 void handleIdentify(unsigned long now) {
+  // IDENTIFY uses ONLY the WS2812 RGB (white flash). The relay stays off
+  // so this can't be confused with activation (which is the whole point
+  // of identify — tell the trainer which target is which without arming
+  // anything).
   unsigned long elapsed = now - identifyStart;
   int flashPhase = elapsed / IDENTIFY_FLASH_MS;
 
   if (flashPhase >= IDENTIFY_FLASHES * 2) {
-    setLedOff();
+    setRgbOff();
     state = STATE_IDLE;
     return;
   }
 
   bool shouldBeOn = (flashPhase % 2 == 0);
   if (shouldBeOn && !identifyLedOn) {
-    setLedWhite();
+    setRgbWhite();
     identifyLedOn = true;
   } else if (!shouldBeOn && identifyLedOn) {
-    setLedOff();
+    setRgbOff();
     identifyLedOn = false;
   }
 }
