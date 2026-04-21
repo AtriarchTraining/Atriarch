@@ -5,8 +5,10 @@ import '../models/drill_config.dart';
 import '../models/target_group.dart';
 import '../theme/atriarch_theme.dart';
 import '../widgets/inc_dec.dart';
+import '../widgets/shooter_chip.dart';
 import '../widgets/target_chip.dart';
 import 'drill_running_screen.dart';
+import 'shooter_picker_screen.dart';
 
 class ProgramASetupScreen extends StatefulWidget {
   const ProgramASetupScreen({super.key});
@@ -134,7 +136,19 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
   Widget build(BuildContext context) {
     final tokens = context.atriarch;
     return Scaffold(
-      appBar: AppBar(title: const Text('Program A - Group Mode')),
+      appBar: AppBar(
+        title: const Text('Program A - Group Mode'),
+        actions: [
+          ShooterChip(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ShooterPickerScreen(),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AtriarchSpacing.lg),
         child: Column(

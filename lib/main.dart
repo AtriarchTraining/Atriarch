@@ -2,15 +2,39 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'db/database_helper.dart';
+import 'repositories/session_repository.dart';
+import 'repositories/shooter_repository.dart';
+import 'services/orphan_recovery.dart';
 import 'state/app_state.dart';
+import 'state/shooter_state.dart';
 import 'theme/atriarch_theme.dart';
 import 'screens/device_discovery_screen.dart';
 import 'screens/home_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final db = await DatabaseHelper.instance();
+  final shooterRepo = ShooterRepository(db);
+  final sessionRepo = SessionRepository(db);
+  await OrphanRecovery.sweep(sessionRepo);
+
+  final shooterState = ShooterState(shooterRepo);
+  await shooterState.initialize();
+
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => AppState(),
+    MultiProvider(
+      providers: [
+        Provider<ShooterRepository>.value(value: shooterRepo),
+        Provider<SessionRepository>.value(value: sessionRepo),
+        ChangeNotifierProvider<ShooterState>.value(value: shooterState),
+        ChangeNotifierProvider<AppState>(
+          create: (_) => AppState(
+            sessions: sessionRepo,
+            shooterState: shooterState,
+          ),
+        ),
+      ],
       child: const AtriarchApp(),
     ),
   );

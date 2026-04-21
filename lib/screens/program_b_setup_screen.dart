@@ -4,7 +4,9 @@ import '../state/app_state.dart';
 import '../models/drill_config.dart';
 import '../theme/atriarch_theme.dart';
 import '../widgets/inc_dec.dart';
+import '../widgets/shooter_chip.dart';
 import 'drill_running_screen.dart';
+import 'shooter_picker_screen.dart';
 
 class ProgramBSetupScreen extends StatefulWidget {
   const ProgramBSetupScreen({super.key});
@@ -105,7 +107,19 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
   Widget build(BuildContext context) {
     final tokens = context.atriarch;
     return Scaffold(
-      appBar: AppBar(title: const Text('Program B - Individual Mode')),
+      appBar: AppBar(
+        title: const Text('Program B - Individual Mode'),
+        actions: [
+          ShooterChip(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ShooterPickerScreen(),
+              ),
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: const _ScanFab(),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AtriarchSpacing.lg),
