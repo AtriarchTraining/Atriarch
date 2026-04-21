@@ -106,6 +106,7 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
     final tokens = context.atriarch;
     return Scaffold(
       appBar: AppBar(title: const Text('Program B - Individual Mode')),
+      floatingActionButton: const _ScanFab(),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AtriarchSpacing.lg),
         child: Column(
@@ -237,6 +238,43 @@ class _StartButton extends StatelessWidget {
                 ),
         ),
       ),
+    );
+  }
+}
+
+// Gate-1 transitional: minimal scan entry point so the Program B end-to-end
+// test is reachable today. The Gate 2 full Target Setup screen (addendum §5:
+// tap-and-hold, Walk-the-Range, photo-map) will supersede this FAB.
+class _ScanFab extends StatelessWidget {
+  const _ScanFab();
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.atriarch;
+    return Consumer<AppState>(
+      builder: (_, state, __) {
+        final scanning = state.isScanning;
+        return FloatingActionButton.extended(
+          onPressed: scanning
+              ? null
+              : () async {
+                  await state.discoverTargets();
+                },
+          backgroundColor: tokens.textPrimary,
+          foregroundColor: tokens.bgBase,
+          icon: scanning
+              ? SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: tokens.bgBase,
+                  ),
+                )
+              : const Icon(Icons.refresh),
+          label: Text(scanning ? 'SCANNING…' : 'SCAN FOR TARGETS'),
+        );
+      },
     );
   }
 }
