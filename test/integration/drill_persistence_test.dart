@@ -86,5 +86,21 @@ void main() {
       expect(rows.first['ended_at'], isNotNull);
       expect(rows.first['finished_normally'], 1);
     });
+
+    test('SnapReply(running=false) closes session with finished_normally=0', () async {
+      final appState = AppState.forTesting(
+        sessions: sessions,
+        shooterState: shooterState,
+      );
+      await appState.startDrill(DrillConfig(programType: ProgramType.programA));
+
+      // Simulate reconnect + snapshot showing drill ended while BLE was out.
+      appState.handleSnapReplyForTesting(running: false);
+      await appState.forceFlushForTesting();
+
+      final rows = await db.query('sessions');
+      expect(rows.first['ended_at'], isNotNull);
+      expect(rows.first['finished_normally'], 0);
+    });
   });
 }

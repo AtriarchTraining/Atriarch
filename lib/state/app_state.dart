@@ -171,6 +171,7 @@ class AppState extends ChangeNotifier {
         _armingTimeout?.cancel();
         _stoppingTimeout?.cancel();
         _setPhase(DrillPhase.finished);
+        unawaited(_closeActiveDbSession(finishedNormally: false));
       }
       return;
     }
@@ -330,6 +331,26 @@ class AppState extends ChangeNotifier {
         _pendingClose = _closeActiveDbSession(finishedNormally: true);
       }
     }
+  }
+
+  @visibleForTesting
+  void handleSnapReplyForTesting({required bool running}) {
+    if (running) {
+      if (_phase == DrillPhase.arming || _phase == DrillPhase.stopping) {
+        _setPhase(DrillPhase.running);
+      }
+      return;
+    }
+    final session = currentSession;
+    if (session != null && session.isRunning) {
+      session.addEvent(SessionEvent(type: EventType.drillFinished));
+    }
+    _armingTimeout?.cancel();
+    _stoppingTimeout?.cancel();
+    _setPhase(DrillPhase.finished);
+    final closeFuture = _closeActiveDbSession(finishedNormally: false);
+    _pendingClose = closeFuture;
+    unawaited(closeFuture);
   }
 
   @visibleForTesting
