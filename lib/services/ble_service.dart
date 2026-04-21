@@ -107,10 +107,14 @@ class BleService {
       throw StateError('No device to discover services on');
     }
     final services = await device.discoverServices();
+    // flutter_blue_plus returns 16-bit SIG UUIDs in short form (e.g. "ffe0")
+    // via .toString(). The HM-10 service/char UUIDs we look for fall in that
+    // SIG range, so compare via .str128 to force the 128-bit canonical form
+    // on both sides.
     for (final service in services) {
-      if (service.uuid.toString() == serviceUuid) {
+      if (service.uuid.str128.toLowerCase() == serviceUuid) {
         for (final char in service.characteristics) {
-          if (char.uuid.toString() == characteristicUuid) {
+          if (char.uuid.str128.toLowerCase() == characteristicUuid) {
             _characteristic = char;
             await _startNotifications();
             return;

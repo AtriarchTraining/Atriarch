@@ -51,6 +51,13 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
     if (!mounted) return;
     final state = context.read<AppState>();
     if (state.phase == DrillPhase.running) {
+      // Detach BEFORE pushReplacement. The transition animates for ~300ms
+      // during which Setup is still in the widget tree and still receives
+      // notifyListeners from AppState — every HIT event during that window
+      // would otherwise re-fire pushReplacement and stack identical Running
+      // screens, producing the rapid horizontal-slide glitch observed in
+      // release builds when the sensor fires quickly.
+      state.removeListener(_onPhaseChanged);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const DrillRunningScreen()),

@@ -45,6 +45,7 @@ class AppState extends ChangeNotifier {
 
   Timer? _armingTimeout;
   Timer? _stoppingTimeout;
+  Timer? _scanTimeout;
 
   ConnectionStatus _lastStatus = ConnectionStatus.disconnected;
 
@@ -103,6 +104,8 @@ class AppState extends ChangeNotifier {
     }
 
     if (decoded is DiscoveryDone) {
+      _scanTimeout?.cancel();
+      _scanTimeout = null;
       isScanning = false;
       notifyListeners();
       return;
@@ -171,6 +174,16 @@ class AppState extends ChangeNotifier {
       t.isOnline = false;
     }
     notifyListeners();
+    // Safety timeout: transmitter's full scan is ~1.5s (30 addresses × 50ms).
+    // Give it 8s for BLE + any queueing delay; if DDONE/ hasn't arrived by
+    // then, something broke — clear isScanning so the user can retry.
+    _scanTimeout?.cancel();
+    _scanTimeout = Timer(const Duration(seconds: 8), () {
+      if (isScanning) {
+        isScanning = false;
+        notifyListeners();
+      }
+    });
     await bleService.write(TransmitterProtocol.encodeDiscovery());
   }
 
@@ -204,21 +217,30 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> stopDrill() async {
-    if (_phase == DrillPhase.running || _phase == DrillPhase.arming) {
-      _setPhase(DrillPhase.stopping);
-      _stoppingTimeout?.cancel();
-      _stoppingTimeout = Timer(const Duration(seconds: 5), () {
-        if (_phase == DrillPhase.stopping) {
-          // Target-side safe-stop (5s no-RF auto-lower, BLE_SILENCE_TIMEOUT_MS) is the real safety
-          // net; the app just moves the user to Results.
-          final session = currentSession;
-          if (session != null && session.isRunning) {
-            session.addEvent(SessionEvent(type: EventType.drillFinished));
-          }
-          _setPhase(DrillPhase.finished);
-        }
-      });
+    // Guard BOTH the state transition AND the wire write. Without this
+    // guard the write fired unconditionally — any caller that invoked
+    // stopDrill() while phase was already stopping/finished/idle would
+    // still blast STOP/ at the transmitter. An upstream bug in some
+    // widget rebuild loop was driving ~6000 STOP/sec which drowned out
+    // the ESP32's drill FSM. Writing only during a real running/arming
+    // → stopping transition keeps the wire honest regardless of caller
+    // rebound.
+    if (_phase != DrillPhase.running && _phase != DrillPhase.arming) {
+      return;
     }
+    _setPhase(DrillPhase.stopping);
+    _stoppingTimeout?.cancel();
+    _stoppingTimeout = Timer(const Duration(seconds: 5), () {
+      if (_phase == DrillPhase.stopping) {
+        // Target-side safe-stop (5s no-RF auto-lower, BLE_SILENCE_TIMEOUT_MS) is the real safety
+        // net; the app just moves the user to Results.
+        final session = currentSession;
+        if (session != null && session.isRunning) {
+          session.addEvent(SessionEvent(type: EventType.drillFinished));
+        }
+        _setPhase(DrillPhase.finished);
+      }
+    });
     await bleService.write(TransmitterProtocol.encodeStop());
   }
 

@@ -47,6 +47,11 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
     if (!mounted) return;
     final state = context.read<AppState>();
     if (state.phase == DrillPhase.finished) {
+      // Detach before navigating — see note in ProgramBSetupScreen. The
+      // Running screen is about to be disposed but the transition animates
+      // for ~300ms; a late notifyListeners during that window would re-fire
+      // pushReplacement and stack duplicate Results screens.
+      state.removeListener(_checkDrillComplete);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const ResultsScreen()),

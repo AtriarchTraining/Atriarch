@@ -59,6 +59,11 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     if (!mounted) return;
     final state = context.read<AppState>();
     if (state.phase == DrillPhase.running) {
+      // See ProgramBSetupScreen for why we detach before navigating: during
+      // the ~300ms pushReplacement animation, Setup is still listening and
+      // phase is still `running`, so every HIT/DONE notifyListeners would
+      // re-fire this and stack duplicate Running screens.
+      state.removeListener(_onPhaseChanged);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const DrillRunningScreen()),
