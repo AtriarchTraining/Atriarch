@@ -5,12 +5,10 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
 import '../widgets/drill_timer.dart';
+import '../widgets/tactical/tactical_hud_tile.dart';
+import '../widgets/tactical/tactical_scaffold.dart';
+import '../widgets/tactical/tactical_status_chip.dart';
 import 'results_screen.dart';
-
-// Addendum §7.1: STOP is press-and-hold, 800ms ring-fill. Single tap no-op.
-// Addendum §3: after completion, enter STOPPING state until FIN/ arrives
-// (or a 2s grace window elapses — Gate 1 fallback before STOP_ACK lands).
-// Addendum §motion: DRILL ACTIVE breathe-pulses 2s opacity 0.75→1.0→0.75.
 
 class DrillRunningScreen extends StatefulWidget {
   const DrillRunningScreen({super.key});
@@ -22,6 +20,7 @@ class DrillRunningScreen extends StatefulWidget {
 class _DrillRunningScreenState extends State<DrillRunningScreen>
     with TickerProviderStateMixin {
   late final AnimationController _breatheController;
+  AppState? _boundState;
 
   @override
   void initState() {
@@ -32,14 +31,14 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
     )..repeat(reverse: true);
 
     final state = context.read<AppState>();
+    _boundState = state;
     state.addListener(_checkDrillComplete);
   }
 
   @override
   void dispose() {
     _breatheController.dispose();
-    final state = context.read<AppState>();
-    state.removeListener(_checkDrillComplete);
+    _boundState?.removeListener(_checkDrillComplete);
     super.dispose();
   }
 
@@ -61,9 +60,6 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
       return;
     }
     await state.stopDrill();
-    // Gate 1 fallback: if STOP_ACK isn't landed on firmware yet, force the
-    // nav after 2s. AppState.stopDrill itself has a 5s aggregate fallback;
-    // this 2s belt-and-suspenders is the UI-layer guard we already had.
     Future.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
       state.forceDrillFinished();
@@ -78,34 +74,70 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
     return Consumer<AppState>(
       builder: (context, state, _) {
         final stopping = state.phase == DrillPhase.stopping;
+        final statusColor =
+            stopping ? tokens.statusArmed : tokens.statusLive;
+        final statusLabel = stopping ? 'stopping' : 'live';
         return PopScope(
           canPop: false,
-          child: Scaffold(
+          child: TacticalScaffold(
+            title: 'DRILL // LIVE',
+            trailing: TacticalStatusChip(
+              color: statusColor,
+              label: statusLabel,
+            ),
             body: SafeArea(
-              child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(AtriarchSpacing.lg),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    const SizedBox(height: AtriarchSpacing.xl),
                     _DrillActiveLabel(
                       color: tokens.statusArmed,
                       reduceMotion: reduceMotion,
                       breathe: _breatheController,
                     ),
-                    const SizedBox(height: AtriarchSpacing.xxxl),
-                    const DrillTimer(),
-                    const SizedBox(height: AtriarchSpacing.hero),
+                    const SizedBox(height: AtriarchSpacing.xl),
+                    _HeroTimerWithBrackets(child: const DrillTimer()),
+                    const SizedBox(height: AtriarchSpacing.xl),
+                    Row(
+                      children: const [
+                        Expanded(
+                          child: TacticalHudTile(
+                            label: 'hits',
+                            value: '—',
+                          ),
+                        ),
+                        SizedBox(width: AtriarchSpacing.sm),
+                        Expanded(
+                          child: TacticalHudTile(
+                            label: 'elapsed',
+                            value: '—',
+                          ),
+                        ),
+                        SizedBox(width: AtriarchSpacing.sm),
+                        Expanded(
+                          child: TacticalHudTile(
+                            label: 'node',
+                            value: '—',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
                     _StopButton(
                       onStop: _onStopConfirmed,
                       isStopping: stopping,
                     ),
-                    const SizedBox(height: AtriarchSpacing.lg),
+                    const SizedBox(height: AtriarchSpacing.md),
                     Text(
-                      stopping ? 'Ending drill…' : 'Press and hold to stop',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: tokens.textTertiary,
-                            letterSpacing: 0.8,
-                          ),
+                      stopping
+                          ? 'ENDING DRILL…'
+                          : 'PRESS AND HOLD TO ABORT',
+                      style: AtriarchText.labelTiny(
+                        color: tokens.textTertiary,
+                      ),
                     ),
+                    const SizedBox(height: AtriarchSpacing.lg),
                   ],
                 ),
               ),
@@ -115,6 +147,84 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
       },
     );
   }
+}
+
+class _HeroTimerWithBrackets extends StatelessWidget {
+  final Widget child;
+  const _HeroTimerWithBrackets({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.atriarch;
+    return SizedBox(
+      height: 140,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _CornerBracketPainter(color: tokens.statusHit),
+            ),
+          ),
+          Center(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class _CornerBracketPainter extends CustomPainter {
+  final Color color;
+  _CornerBracketPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    const armLen = 16.0;
+    const inset = 4.0;
+
+    // top-left
+    canvas.drawLine(Offset(inset, inset), Offset(inset + armLen, inset), paint);
+    canvas.drawLine(Offset(inset, inset), Offset(inset, inset + armLen), paint);
+    // top-right
+    canvas.drawLine(
+      Offset(size.width - inset - armLen, inset),
+      Offset(size.width - inset, inset),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(size.width - inset, inset),
+      Offset(size.width - inset, inset + armLen),
+      paint,
+    );
+    // bottom-left
+    canvas.drawLine(
+      Offset(inset, size.height - inset),
+      Offset(inset + armLen, size.height - inset),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(inset, size.height - inset - armLen),
+      Offset(inset, size.height - inset),
+      paint,
+    );
+    // bottom-right
+    canvas.drawLine(
+      Offset(size.width - inset - armLen, size.height - inset),
+      Offset(size.width - inset, size.height - inset),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(size.width - inset, size.height - inset - armLen),
+      Offset(size.width - inset, size.height - inset),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _DrillActiveLabel extends StatelessWidget {
@@ -130,7 +240,7 @@ class _DrillActiveLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.displaySmall?.copyWith(
+    final style = Theme.of(context).textTheme.titleMedium?.copyWith(
           color: color,
           letterSpacing: 4,
           fontWeight: FontWeight.w700,
@@ -238,12 +348,9 @@ class _StopButtonState extends State<_StopButton>
                 ),
               ),
               Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: buttonColor,
-                ),
+                width: 180,
+                height: 180,
+                color: buttonColor,
                 alignment: Alignment.center,
                 child: widget.isStopping
                     ? _StoppingLabel(tokens: tokens)
@@ -255,7 +362,7 @@ class _StopButtonState extends State<_StopButton>
                             ?.copyWith(
                               color: Colors.white,
                               fontSize: 42,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w900,
                               letterSpacing: 3,
                             ),
                       ),
@@ -270,7 +377,6 @@ class _StopButtonState extends State<_StopButton>
 
 class _StoppingLabel extends StatelessWidget {
   final AtriarchTokens tokens;
-
   const _StoppingLabel({required this.tokens});
 
   @override
