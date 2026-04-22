@@ -186,11 +186,26 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
     );
   }
 
+  /// Preset name captured at drill-start; see program_a_setup counterpart.
+  String? _presetNameForStart() {
+    final store = _presetStore;
+    if (store == null) return null;
+    final selId = store.selectedPresetId;
+    if (selId == null) return null;
+    if (store.isModified) return null;
+    for (final p in store.presets) {
+      if (p.id == selId) return p.name;
+    }
+    return null;
+  }
+
   void _startDrill() {
     final config = _buildConfig();
     if (config == null) return;
     _lastConfig = config;
-    context.read<AppState>().startDrill(config);
+    context
+        .read<AppState>()
+        .startDrill(config, presetName: _presetNameForStart());
   }
 
   void _retryDrill() {
@@ -198,7 +213,7 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
     state.resetDrillPhase();
     final config = _lastConfig ?? _buildConfig();
     if (config == null) return;
-    state.startDrill(config);
+    state.startDrill(config, presetName: _presetNameForStart());
   }
 
   @override

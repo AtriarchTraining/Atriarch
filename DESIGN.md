@@ -162,8 +162,13 @@ Material Symbols rounded, locked set:
 bluetooth, bluetooth_disabled, refresh, flash_on, gps_fixed,
 check_circle, warning, home, block, gpp_good, gpp_bad,
 ios_share, volume_up, photo_camera, groups, person,
-play_arrow, chevron_right, more_vert, edit, delete, settings
+play_arrow, chevron_right, more_vert, edit, delete, settings,
+article
 ```
+
+`article` added in Gate 2 #18 for the "Export drill log (JSON)" row in the
+Results share sheet — differentiates from the image share row, which uses
+`ios_share`.
 
 New icons require updating this doc first.
 

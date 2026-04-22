@@ -11,6 +11,8 @@ import '../models/target_unit.dart';
 import '../models/drill_config.dart';
 import '../models/drill_session.dart';
 import '../models/session_event.dart';
+import '../data/session_summary.dart';
+import '../util/drill_log_codec.dart';
 import '../util/target_name_resolver.dart';
 
 /// Drill phase machine (Gate 1 §1.3 / Addendum §3 UI state sync).
@@ -266,6 +268,7 @@ class AppState extends ChangeNotifier {
       if (session != null && session.isRunning) {
         session.addEvent(SessionEvent(type: EventType.drillFinished));
       }
+      _onDrillFinished(incomplete: false);
       _setPhase(DrillPhase.finished);
       return;
     }
@@ -290,6 +293,7 @@ class AppState extends ChangeNotifier {
         }
         _armingTimeout?.cancel();
         _stoppingTimeout?.cancel();
+        _onDrillFinished(incomplete: true);
         _setPhase(DrillPhase.finished);
       }
       return;
@@ -308,6 +312,7 @@ class AppState extends ChangeNotifier {
         if (decoded.type == EventType.drillFinished) {
           _armingTimeout?.cancel();
           _stoppingTimeout?.cancel();
+          _onDrillFinished(incomplete: false);
           _setPhase(DrillPhase.finished);
         }
         notifyListeners();
@@ -395,8 +400,9 @@ class AppState extends ChangeNotifier {
     _setPhase(DrillPhase.idle);
   }
 
-  Future<void> startDrill(DrillConfig config) async {
-    currentSession = DrillSession(config: config);
+  Future<void> startDrill(DrillConfig config, {String? presetName}) async {
+    currentSession = DrillSession(config: config, presetName: presetName);
+    _persistedDrillIds.remove(currentSession!.drillId);
     unreachableTargets.clear();
     _setPhase(DrillPhase.arming);
 
@@ -422,6 +428,7 @@ class AppState extends ChangeNotifier {
           if (session != null && session.isRunning) {
             session.addEvent(SessionEvent(type: EventType.drillFinished));
           }
+          _onDrillFinished(incomplete: true);
           _setPhase(DrillPhase.finished);
         }
       });
@@ -439,7 +446,81 @@ class AppState extends ChangeNotifier {
     }
     _armingTimeout?.cancel();
     _stoppingTimeout?.cancel();
+    _onDrillFinished(incomplete: true);
     _setPhase(DrillPhase.finished);
+  }
+
+  /// Ids of drills that have already been persisted via [_onDrillFinished].
+  /// Guards the FIN + STOP_ACK + SNAP_REPLY triple-fire window: whichever
+  /// arrives first wins, the others become no-ops.
+  final Set<String> _persistedDrillIds = <String>{};
+
+  /// Drill-end persistence pipeline (#16 + #17). Writes the drill log JSON
+  /// and appends a session summary. Swallows errors per path — UI must not
+  /// block on persistence.
+  ///
+  /// Skips entirely when the session never saw an ACT (drill aborted during
+  /// arming), matching addendum §4.E "only save drills that actually ran".
+  void _onDrillFinished({required bool incomplete}) {
+    final session = currentSession;
+    if (session == null) return;
+    if (_persistedDrillIds.contains(session.drillId)) return;
+
+    final activations = session.events
+        .where((e) => e.type == EventType.targetActivated)
+        .toList(growable: false);
+    if (activations.isEmpty) {
+      // Drill never armed successfully — nothing meaningful to record.
+      return;
+    }
+    _persistedDrillIds.add(session.drillId);
+
+    final presetName = session.presetName ?? 'Custom';
+
+    // Capture target names at drill-end so historical logs survive renames.
+    final targetNames = Map<int, String>.from(_targetNames);
+
+    // 1. Write the JSON log. Errors are surfaced only via debugPrint.
+    try {
+      final payload = DrillLogCodec.encode(
+        session,
+        presetName: presetName,
+        targetNames: targetNames,
+      );
+      unawaited(drillLogs.writeLog(session.drillId, payload).catchError((e) {
+        debugPrint('drillLogs.writeLog failed: $e');
+      }));
+    } catch (e) {
+      debugPrint('drill log encode failed: $e');
+    }
+
+    // 2. Append a summary for Recent Drills.
+    try {
+      final completions = session.events
+          .where((e) => e.type == EventType.targetComplete)
+          .length;
+      final violations = session.events
+          .where((e) => e.type == EventType.noShootViolation)
+          .length;
+      final lateHits =
+          session.events.where((e) => e.type == EventType.lateHit).length;
+
+      final summary = SessionSummary.create(
+        drillId: session.drillId,
+        presetName: presetName,
+        startedAt: session.startTime,
+        duration: session.elapsed,
+        completions: completions,
+        violations: violations,
+        lateHits: lateHits,
+        incomplete: incomplete,
+      );
+      unawaited(sessions.appendDrill(summary).catchError((e) {
+        debugPrint('sessions.appendDrill failed: $e');
+      }));
+    } catch (e) {
+      debugPrint('session summary build failed: $e');
+    }
   }
 
   // -------------------------------------------------- User-named targets (§4.B)

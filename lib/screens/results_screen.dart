@@ -1,37 +1,93 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import '../state/app_state.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../models/session_event.dart';
+import '../state/app_state.dart';
+import '../util/results_view_model.dart';
+import '../util/target_name_resolver.dart';
+import '../util/widget_to_image.dart';
+import '../widgets/drill_result_image.dart';
+import '../widgets/drill_share_sheet.dart';
 import 'home_screen.dart';
 
+/// Results view. Renders either the live [DrillSession] held on [AppState]
+/// or a hydrated [ResultsViewModel] when reached via Recent Drills in
+/// read-only mode (#16).
 class ResultsScreen extends StatelessWidget {
-  const ResultsScreen({super.key});
+  /// Optional pre-built view model for historical renders. When null the
+  /// widget falls back to [AppState.currentSession].
+  final ResultsViewModel? viewModel;
+
+  /// Read-only mode hides Run Again / New Drill actions. Reached via
+  /// RecentDrillsScreen (#16).
+  final bool readOnly;
+
+  const ResultsScreen({
+    super.key,
+    this.viewModel,
+    this.readOnly = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final state = context.read<AppState>();
-    final session = state.currentSession;
-
-    if (session == null) {
+    final model = viewModel ?? _liveModel(context);
+    if (model == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Results')),
         body: const Center(child: Text('No session data.')),
       );
     }
+    return _ResultsView(model: model, readOnly: readOnly);
+  }
 
-    final events = session.events;
-    final activations = events.where((e) => e.type == EventType.targetActivated).toList();
-    final completions = events.where((e) => e.type == EventType.targetComplete).toList();
-    final noShoots = events.where((e) => e.type == EventType.noShootViolation).toList();
-    final lateHits = events.where((e) => e.type == EventType.lateHit).toList();
+  static ResultsViewModel? _liveModel(BuildContext context) {
+    final state = context.read<AppState>();
+    final session = state.currentSession;
+    if (session == null) return null;
+    return ResultsViewModel.fromLiveSession(
+      session,
+      presetName: session.presetName ?? 'Custom',
+      resolver: state.targetNameResolver,
+    );
+  }
+}
+
+class _ResultsView extends StatelessWidget {
+  final ResultsViewModel model;
+  final bool readOnly;
+
+  const _ResultsView({required this.model, required this.readOnly});
+
+  @override
+  Widget build(BuildContext context) {
+    final events = model.events;
+    final resolver = model.nameResolver;
+
+    final activations =
+        events.where((e) => e.type == EventType.targetActivated).toList();
+    final completions =
+        events.where((e) => e.type == EventType.targetComplete).toList();
+    final noShoots =
+        events.where((e) => e.type == EventType.noShootViolation).toList();
+    final lateHits =
+        events.where((e) => e.type == EventType.lateHit).toList();
     final hits = events.where((e) => e.type == EventType.hitDetected).toList();
 
-    final targetIds = activations.map((e) => e.targetId).whereType<int>().toSet();
+    final targetIds =
+        activations.map((e) => e.targetId).whereType<int>().toSet();
     final perTarget = <int, _TargetStats>{};
     for (final id in targetIds) {
-      final tCompletions = completions.where((e) => e.targetId == id).toList();
+      final tCompletions =
+          completions.where((e) => e.targetId == id).toList();
       final avgTime = tCompletions.isNotEmpty
-          ? tCompletions.map((e) => e.totalTimeMs ?? 0).reduce((a, b) => a + b) /
+          ? tCompletions
+                  .map((e) => e.totalTimeMs ?? 0)
+                  .reduce((a, b) => a + b) /
               tCompletions.length
           : 0.0;
       perTarget[id] = _TargetStats(
@@ -45,7 +101,16 @@ class ResultsScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Drill Results')),
+      appBar: AppBar(
+        title: const Text('Drill Results'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share),
+            tooltip: 'Share drill',
+            onPressed: () => _openShareSheet(context),
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -54,7 +119,7 @@ class ResultsScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _StatCard('Duration', _formatDuration(session.elapsed)),
+                _StatCard('Duration', _formatDuration(model.duration)),
                 _StatCard('Activations', '${activations.length}'),
                 _StatCard('Total Hits', '${hits.length}'),
               ],
@@ -63,7 +128,8 @@ class ResultsScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _StatCard('Completions', '${completions.length}', color: Colors.green),
+                _StatCard('Completions', '${completions.length}',
+                    color: Colors.green),
                 _StatCard('No-Shoot', '${noShoots.length}',
                     color: noShoots.isEmpty ? Colors.green : Colors.red),
                 _StatCard('Late Hits', '${lateHits.length}',
@@ -89,14 +155,16 @@ class ResultsScreen extends StatelessWidget {
                 rows: perTarget.entries.map((entry) {
                   final s = entry.value;
                   return DataRow(cells: [
-                    DataCell(Text('T${entry.key}')),
+                    DataCell(Text(resolver.display(entry.key))),
                     DataCell(Text('${s.hits}')),
                     DataCell(Text('${s.completions}')),
                     DataCell(Text('${s.avgCompletionMs.toInt()}')),
                     DataCell(Text('${s.noShoots}',
-                        style: TextStyle(color: s.noShoots > 0 ? Colors.red : null))),
+                        style: TextStyle(
+                            color: s.noShoots > 0 ? Colors.red : null))),
                     DataCell(Text('${s.lateHits}',
-                        style: TextStyle(color: s.lateHits > 0 ? Colors.orange : null))),
+                        style: TextStyle(
+                            color: s.lateHits > 0 ? Colors.orange : null))),
                   ]);
                 }).toList(),
               ),
@@ -105,19 +173,78 @@ class ResultsScreen extends StatelessWidget {
             const Text('Event Log',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            ...events.map((e) => _EventTile(event: e)),
+            ...events
+                .map((e) => _EventTile(event: e, resolver: resolver)),
             const SizedBox(height: 32),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.pushReplacement(
+        onPressed: () => Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const HomeScreen()),
+          (route) => false,
         ),
         child: const Icon(Icons.home),
       ),
     );
+  }
+
+  Future<void> _openShareSheet(BuildContext context) async {
+    await DrillShareSheet.show(
+      context,
+      onShareImage: () => _shareImage(context),
+      onExportJson: () => _exportJson(context),
+    );
+  }
+
+  Future<void> _shareImage(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final bytes = await captureWidgetToPng(
+        DrillResultImage(model: model),
+        size: const Size(
+          DrillResultImage.width,
+          DrillResultImage.height,
+        ),
+      );
+      final path = await _writeTempPng(bytes, model.drillId);
+      await Share.shareXFiles(
+        [XFile(path, mimeType: 'image/png')],
+        subject: 'Atriarch drill result',
+        text: '${model.presetName} · ${_formatDuration(model.duration)}',
+      );
+    } catch (e) {
+      debugPrint('shareImage failed: $e');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Unable to share image.')),
+      );
+    }
+  }
+
+  Future<String> _writeTempPng(Uint8List bytes, String drillId) async {
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/atriarch_drill_$drillId.png');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  Future<void> _exportJson(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final state = context.read<AppState>();
+    try {
+      final path = await state.drillLogs.exportLogToFile(model.drillId);
+      await Share.shareXFiles(
+        [XFile(path, mimeType: 'application/json')],
+        subject: 'Atriarch drill log',
+        text: '${model.presetName} · ${_formatDuration(model.duration)}',
+      );
+    } catch (e) {
+      debugPrint('exportJson failed: $e');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Drill log not available.')),
+      );
+    }
   }
 
   String _formatDuration(Duration d) {
@@ -160,8 +287,10 @@ class _StatCard extends StatelessWidget {
         child: Column(
           children: [
             Text(value,
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-            Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                style: TextStyle(
+                    fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+            Text(label,
+                style: const TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
       ),
@@ -171,7 +300,9 @@ class _StatCard extends StatelessWidget {
 
 class _EventTile extends StatelessWidget {
   final SessionEvent event;
-  const _EventTile({required this.event});
+  final TargetNameResolver resolver;
+
+  const _EventTile({required this.event, required this.resolver});
 
   @override
   Widget build(BuildContext context) {
@@ -179,27 +310,31 @@ class _EventTile extends StatelessWidget {
     Color color;
     String text;
 
+    String name(int? id) => id == null ? '?' : resolver.display(id);
+
     switch (event.type) {
       case EventType.targetActivated:
         icon = Icons.play_arrow;
         color = Colors.green;
-        text = 'Target ${event.targetId} activated';
+        text = '${name(event.targetId)} activated';
       case EventType.hitDetected:
         icon = Icons.gps_fixed;
         color = Colors.blue;
-        text = 'Target ${event.targetId} hit ${event.hitNumber}/${event.requiredHits}';
+        text =
+            '${name(event.targetId)} hit ${event.hitNumber}/${event.requiredHits}';
       case EventType.targetComplete:
         icon = Icons.check_circle;
         color = Colors.green;
-        text = 'Target ${event.targetId} complete (${event.totalTimeMs}ms)';
+        text =
+            '${name(event.targetId)} complete (${event.totalTimeMs}ms)';
       case EventType.noShootViolation:
         icon = Icons.warning;
         color = Colors.red;
-        text = 'NO-SHOOT Target ${event.targetId}!';
+        text = 'NO-SHOOT ${name(event.targetId)}!';
       case EventType.lateHit:
         icon = Icons.timer_off;
         color = Colors.orange;
-        text = 'Late hit on Target ${event.targetId}';
+        text = 'Late hit on ${name(event.targetId)}';
       case EventType.drillFinished:
         icon = Icons.flag;
         color = Colors.grey;

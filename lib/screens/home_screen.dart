@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import 'device_discovery_screen.dart';
 import 'program_a_setup_screen.dart';
 import 'program_b_setup_screen.dart';
+import 'recent_drills_screen.dart';
 import 'settings_screen.dart';
 
 // Implements addendum §1 Home screen spec: persistent connection banner +
@@ -77,6 +78,29 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 const Divider(height: 1),
+                Consumer<AppState>(
+                  builder: (_, state, __) {
+                    final count = state.sessions.currentSessionDrills.length;
+                    if (count == 0) return const SizedBox.shrink();
+                    return Column(
+                      children: [
+                        _HomeRow(
+                          icon: Icons.check_circle,
+                          title: 'Recent Drills',
+                          subtitle: '$count drill${count == 1 ? '' : 's'} '
+                              'this session',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const RecentDrillsScreen(),
+                            ),
+                          ),
+                        ),
+                        const Divider(height: 1),
+                      ],
+                    );
+                  },
+                ),
               ],
             ),
           ),

@@ -110,6 +110,67 @@ class DrillConfig extends HiveObject {
   /// Build a copy with the given overrides. Used to apply preset values into
   /// a screen-local working config. `groups`, `targetIds`, and `noShootIds`
   /// are deep-copied so mutating the copy doesn't leak back into the source.
+  /// JSON view used by the drill log envelope (#17). Emits only the
+  /// user-facing fields; Hive-internal metadata (version bump semantics)
+  /// stays in [version] so a v2 shape can migrate cleanly.
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'programType': programType.name,
+        'startMin': startMin,
+        'startMax': startMax,
+        'delayMin': delayMin,
+        'delayMax': delayMax,
+        'hitsMin': hitsMin,
+        'hitsMax': hitsMax,
+        'iterations': iterations,
+        'groups': groups.map((g) => g.toJson()).toList(growable: false),
+        'targetIds': List<int>.from(targetIds),
+        'noShootIds': List<int>.from(noShootIds),
+        'version': version,
+      };
+
+  factory DrillConfig.fromJson(Map<String, dynamic> json) {
+    final rawProgram = json['programType'];
+    final program = ProgramType.values.firstWhere(
+      (p) => p.name == rawProgram,
+      orElse: () => ProgramType.programA,
+    );
+    final rawGroups = json['groups'];
+    final groups = rawGroups is List
+        ? rawGroups
+            .whereType<Map>()
+            .map((m) => TargetGroup.fromJson(Map<String, dynamic>.from(m)))
+            .toList(growable: true)
+        : <TargetGroup>[];
+    final rawTargetIds = json['targetIds'];
+    final targetIds = rawTargetIds is List
+        ? rawTargetIds
+            .whereType<num>()
+            .map((n) => n.toInt())
+            .toList(growable: true)
+        : <int>[];
+    final rawNoShoot = json['noShootIds'];
+    final noShootIds = rawNoShoot is List
+        ? rawNoShoot
+            .whereType<num>()
+            .map((n) => n.toInt())
+            .toList(growable: true)
+        : <int>[];
+    return DrillConfig(
+      programType: program,
+      startMin: (json['startMin'] as num?)?.toDouble() ?? 1.0,
+      startMax: (json['startMax'] as num?)?.toDouble() ?? 3.0,
+      delayMin: (json['delayMin'] as num?)?.toDouble() ?? 0.5,
+      delayMax: (json['delayMax'] as num?)?.toDouble() ?? 2.0,
+      hitsMin: (json['hitsMin'] as num?)?.toInt() ?? 1,
+      hitsMax: (json['hitsMax'] as num?)?.toInt() ?? 3,
+      iterations: (json['iterations'] as num?)?.toInt() ?? 5,
+      groups: groups,
+      targetIds: targetIds,
+      noShootIds: noShootIds,
+      version: (json['version'] as num?)?.toInt() ?? 1,
+    );
+  }
+
   DrillConfig copyWithFields({
     ProgramType? programType,
     double? startMin,

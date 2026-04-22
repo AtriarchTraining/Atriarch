@@ -254,11 +254,28 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     );
   }
 
+  /// Preset name in effect at drill-start, or null when the user ran with
+  /// no selection / a modified config. [AppState._onDrillFinished] swaps in
+  /// "Custom" when writing the summary + log JSON.
+  String? _presetNameForStart() {
+    final store = _presetStore;
+    if (store == null) return null;
+    final selId = store.selectedPresetId;
+    if (selId == null) return null;
+    if (store.isModified) return null;
+    for (final p in store.presets) {
+      if (p.id == selId) return p.name;
+    }
+    return null;
+  }
+
   void _startDrill() {
     final config = _buildConfig();
     if (config == null) return;
     _lastConfig = config;
-    context.read<AppState>().startDrill(config);
+    context
+        .read<AppState>()
+        .startDrill(config, presetName: _presetNameForStart());
   }
 
   void _retryDrill() {
@@ -266,7 +283,7 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     state.resetDrillPhase();
     final config = _lastConfig ?? _buildConfig();
     if (config == null) return;
-    state.startDrill(config);
+    state.startDrill(config, presetName: _presetNameForStart());
   }
 
   void _assignTargetToGroup(int targetId) {
