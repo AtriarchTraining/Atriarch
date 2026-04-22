@@ -5,6 +5,7 @@ import 'data/drill_log_repository.dart';
 import 'data/hive_bootstrap.dart';
 import 'data/preferences_repository.dart';
 import 'data/session_repository.dart';
+import 'services/audio_service.dart';
 import 'state/app_state.dart';
 import 'theme/atriarch_theme.dart';
 import 'theme/theme_controller.dart';
@@ -29,6 +30,12 @@ Future<void> main() async {
   final themeController = ThemeController(preferences: preferences);
   await themeController.init();
 
+  // Gate 2 #15: ready-audio chime. Session-long lifecycle; Flutter disposes
+  // on process exit. init() is best-effort — audio-session + asset preload
+  // failures are logged and swallowed.
+  final audio = AudioService();
+  await audio.init();
+
   runApp(
     MultiProvider(
       providers: [
@@ -37,6 +44,7 @@ Future<void> main() async {
             preferences: preferences,
             sessions: sessions,
             drillLogs: drillLogs,
+            audio: audio,
           ),
         ),
         ChangeNotifierProvider<ThemeController>.value(value: themeController),

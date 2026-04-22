@@ -4,6 +4,7 @@ import '../data/drill_log_repository.dart';
 import '../data/in_memory_repositories.dart';
 import '../data/preferences_repository.dart';
 import '../data/session_repository.dart';
+import '../services/audio_service.dart';
 import '../services/ble_service.dart';
 import '../services/transmitter_protocol.dart';
 import '../models/target_unit.dart';
@@ -60,6 +61,41 @@ class AppState extends ChangeNotifier {
   final SessionRepository sessions;
   final DrillLogRepository drillLogs;
 
+  /// Gate 2 #15 ready-audio cue. Non-null; tests inject a [NoopAudioService].
+  final AudioService audio;
+
+  // --------------------------------------------- Ready-audio settings (§4.C)
+  static const String _kReadyAudioEnabled = 'ready_audio_enabled';
+  static const String _kReadyAudioVolume = 'ready_audio_volume';
+  static const bool _defaultReadyAudioEnabled = true;
+  static const double _defaultReadyAudioVolume = 0.7;
+
+  bool _readyAudioEnabled = _defaultReadyAudioEnabled;
+  double _readyAudioVolume = _defaultReadyAudioVolume;
+
+  /// True once the ready-audio settings have been loaded from persistence
+  /// OR overwritten by a user-driven setter. Used to prevent a late-arriving
+  /// hydrate microtask from clobbering a user change that ran first.
+  bool _readyAudioHydrated = false;
+
+  /// True while the ready chime is enabled in Settings. Source of truth is
+  /// [preferences]; this is a cached snapshot for synchronous UI reads.
+  bool get readyAudioEnabled => _readyAudioEnabled;
+
+  /// Playback volume for the ready chime (0.0–1.0). Source of truth is
+  /// [preferences]; this is a cached snapshot for synchronous UI reads.
+  double get readyAudioVolume => _readyAudioVolume;
+
+  /// Guards duplicate chimes within a single discovery cycle. Resets on
+  /// [discoverTargets] (a.k.a. "startScan"), fires once when the fleet
+  /// reaches full-online.
+  bool _readyChimePlayedForCurrentCycle = false;
+
+  /// True once [DiscoveryDone] has arrived for the current cycle. Used to
+  /// gate the late-arriving-target path — we only chime mid-cycle after
+  /// `DDONE/` has fired.
+  bool _discoveryDoneSeenForCurrentCycle = false;
+
   /// Live snapshot of saved target names (id -> user-assigned display name).
   /// Loaded from [preferences] on construction; kept in sync by
   /// [setTargetName]. Consumers should render via [targetNameResolver].
@@ -70,6 +106,11 @@ class AppState extends ChangeNotifier {
   final Set<int> _removedTargetIds = <int>{};
 
   bool _showRemoved = false;
+
+  /// True once the target-pref snapshots have been loaded from persistence
+  /// OR overwritten by a user-driven setter. Prevents a late hydrate tick
+  /// from clobbering a user change that landed first.
+  bool _targetPrefsHydrated = false;
 
   /// AppBar overflow "Show removed" toggle state (addendum §4.B).
   bool get showRemoved => _showRemoved;
@@ -86,6 +127,7 @@ class AppState extends ChangeNotifier {
     required this.preferences,
     required this.sessions,
     required this.drillLogs,
+    required this.audio,
   }) {
     _dataSub = bleService.incomingData.listen(_handleIncomingData);
     _statusSub = bleService.connectionStatus.listen(_handleConnectionStatus);
@@ -93,21 +135,46 @@ class AppState extends ChangeNotifier {
     // real labels on first frame. Safe to fire-and-forget: the preferences
     // repo surfaces empty defaults before init completes.
     unawaited(_hydrateTargetPrefs());
+    unawaited(_hydrateReadyAudioPrefs());
   }
 
   Future<void> _hydrateTargetPrefs() async {
     try {
       final names = await preferences.getTargetNames();
       final removed = await preferences.getRemovedTargetIds();
+      // Guard the setter-before-hydrate race: a user action that ran first
+      // may have already updated the in-memory snapshot; don't clobber it.
+      if (_targetPrefsHydrated) return;
       _targetNames
         ..clear()
         ..addAll(names);
       _removedTargetIds
         ..clear()
         ..addAll(removed);
+      _targetPrefsHydrated = true;
       notifyListeners();
     } catch (_) {
       // Best-effort; absence of saved names just means fallback `T{id}` labels.
+    }
+  }
+
+  Future<void> _hydrateReadyAudioPrefs() async {
+    try {
+      final enabled =
+          await preferences.getSetting<bool>(_kReadyAudioEnabled);
+      final volume =
+          await preferences.getSetting<double>(_kReadyAudioVolume);
+      // Guard against the setter-before-hydrate race: a test (or the user on
+      // a fast tap) may have already moved the in-memory value past the
+      // persisted one. Only apply hydration results when the cached value
+      // has not been touched yet.
+      if (_readyAudioHydrated) return;
+      _readyAudioEnabled = enabled ?? _defaultReadyAudioEnabled;
+      _readyAudioVolume = volume ?? _defaultReadyAudioVolume;
+      _readyAudioHydrated = true;
+      notifyListeners();
+    } catch (_) {
+      // Best-effort; defaults above take over.
     }
   }
 
@@ -118,11 +185,13 @@ class AppState extends ChangeNotifier {
     PreferencesRepository? preferences,
     SessionRepository? sessions,
     DrillLogRepository? drillLogs,
+    AudioService? audio,
   }) {
     return AppState(
       preferences: preferences ?? InMemoryPreferencesRepository(),
       sessions: sessions ?? InMemorySessionRepository(),
       drillLogs: drillLogs ?? InMemoryDrillLogRepository(),
+      audio: audio ?? NoopAudioService(),
     );
   }
 
@@ -172,11 +241,19 @@ class AppState extends ChangeNotifier {
         existing.first.isOnline = true;
       }
       notifyListeners();
+      // Late-arriving target path (§4.C): if DDONE already fired and this
+      // target just completed the fleet, fire the chime now. Guarded by
+      // _readyChimePlayedForCurrentCycle so it still only plays once.
+      if (_discoveryDoneSeenForCurrentCycle) {
+        _maybePlayReadyChime();
+      }
       return;
     }
 
     if (decoded is DiscoveryDone) {
       isScanning = false;
+      _discoveryDoneSeenForCurrentCycle = true;
+      _maybePlayReadyChime();
       notifyListeners();
       return;
     }
@@ -240,11 +317,68 @@ class AppState extends ChangeNotifier {
 
   Future<void> discoverTargets() async {
     isScanning = true;
+    // New discovery cycle: reset the ready-chime guards so a completed
+    // fleet can trigger the chime exactly once this cycle (§4.C).
+    _readyChimePlayedForCurrentCycle = false;
+    _discoveryDoneSeenForCurrentCycle = false;
     for (final t in targets) {
       t.isOnline = false;
     }
     notifyListeners();
     await bleService.write(TransmitterProtocol.encodeDiscovery());
+  }
+
+  /// Gate 2 §4.C. Plays the ready chime iff:
+  ///   - the user setting is enabled,
+  ///   - we haven't already chimed this cycle,
+  ///   - all non-removed targets are online,
+  ///   - there is at least one non-removed target (empty fleet doesn't
+  ///     trigger a "ready" state).
+  void _maybePlayReadyChime() {
+    if (_readyChimePlayedForCurrentCycle) return;
+    if (!_readyAudioEnabled) return;
+    final visible = targets
+        .where((t) => !_removedTargetIds.contains(t.id))
+        .toList(growable: false);
+    if (visible.isEmpty) return;
+    final allOnline = visible.every((t) => t.isOnline);
+    if (!allOnline) return;
+    _readyChimePlayedForCurrentCycle = true;
+    // Fire-and-forget; AudioService swallows its own failures.
+    unawaited(audio.playReady(volume: _readyAudioVolume));
+  }
+
+  // ---------------------------------------------- Ready-audio setters (§4.C)
+
+  /// Persist + apply the ready-chime on/off toggle. Source of truth is
+  /// [preferences]; the cached [_readyAudioEnabled] snapshot keeps the UI
+  /// in sync.
+  Future<void> setReadyAudioEnabled(bool enabled) async {
+    // Mark hydrated so a still-pending _hydrateReadyAudioPrefs microtask
+    // doesn't overwrite this user change.
+    _readyAudioHydrated = true;
+    if (_readyAudioEnabled == enabled) return;
+    _readyAudioEnabled = enabled;
+    notifyListeners();
+    await preferences.setSetting<bool>(_kReadyAudioEnabled, enabled);
+  }
+
+  /// Persist + apply the ready-chime volume (clamped to 0.0–1.0).
+  Future<void> setReadyAudioVolume(double volume) async {
+    _readyAudioHydrated = true;
+    final clamped = volume.clamp(0.0, 1.0).toDouble();
+    if ((_readyAudioVolume - clamped).abs() < 1e-6) return;
+    _readyAudioVolume = clamped;
+    notifyListeners();
+    await preferences.setSetting<double>(_kReadyAudioVolume, clamped);
+  }
+
+  /// Test seam. Drives a single parsed [TransmitterProtocol] message through
+  /// the internal handler without needing a real BLE stream. Only used by
+  /// unit tests — production code goes through [BleService.incomingData].
+  @visibleForTesting
+  void debugInjectRawMessage(String rawMessage) {
+    _handleIncomingData(rawMessage);
   }
 
   Future<void> identifyTarget(int targetId) async {
@@ -314,6 +448,7 @@ class AppState extends ChangeNotifier {
   /// snapshot so the resolver returns it immediately. Pass null or empty to
   /// revert to the `T{id}` fallback.
   Future<void> setTargetName(int targetId, String? name) async {
+    _targetPrefsHydrated = true;
     final trimmed = name?.trim();
     if (trimmed == null || trimmed.isEmpty) {
       _targetNames.remove(targetId);
@@ -341,12 +476,14 @@ class AppState extends ChangeNotifier {
   /// relaunch; reversible via [restoreTarget] or the AppBar "Show removed"
   /// toggle.
   Future<void> removeTarget(int targetId) async {
+    _targetPrefsHydrated = true;
     _removedTargetIds.add(targetId);
     await preferences.setRemovedTargetIds(_removedTargetIds);
     notifyListeners();
   }
 
   Future<void> restoreTarget(int targetId) async {
+    _targetPrefsHydrated = true;
     _removedTargetIds.remove(targetId);
     await preferences.setRemovedTargetIds(_removedTargetIds);
     notifyListeners();
