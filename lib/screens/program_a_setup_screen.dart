@@ -5,7 +5,9 @@ import '../models/drill_config.dart';
 import '../models/target_group.dart';
 import '../theme/atriarch_theme.dart';
 import '../theme/theme_controller.dart';
+import '../util/preset_store.dart';
 import '../widgets/inc_dec.dart';
+import '../widgets/preset_row.dart';
 import '../widgets/target_actions_sheet.dart';
 import '../widgets/target_chip.dart';
 import 'drill_running_screen.dart';
@@ -31,6 +33,8 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
 
   DrillConfig? _lastConfig;
 
+  PresetStore? _presetStore;
+
   @override
   void initState() {
     super.initState();
@@ -45,6 +49,41 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
       context.read<AppState>().addListener(_onPhaseChanged);
       context.read<ThemeController>().setDrillContextActive(true);
     });
+    // Wire preset store. Uses a postFrame callback so we can read the
+    // PreferencesRepository off AppState without a build-phase context.read.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final prefs = context.read<AppState>().preferences;
+      final store = PresetStore(
+        repository: prefs,
+        programType: ProgramType.programA,
+      );
+      await store.init();
+      if (!mounted) {
+        store.dispose();
+        return;
+      }
+      setState(() => _presetStore = store);
+      // If init() auto-selected a default preset, apply it to controllers.
+      if (store.selectedPresetId != null) _onPresetLoaded();
+      // Seed the live config so isModified computes correctly before the
+      // first controller edit.
+      _pushLiveConfig();
+    });
+
+    // Every controller change pushes the current form state into the
+    // preset store so "— modified" stays live.
+    for (final c in [
+      startMinCtrl,
+      startMaxCtrl,
+      delayMinCtrl,
+      delayMaxCtrl,
+      hitsMinCtrl,
+      hitsMaxCtrl,
+      iterCtrl,
+    ]) {
+      c.addListener(_pushLiveConfig);
+    }
   }
 
   @override
@@ -60,7 +99,115 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     } catch (_) {
       // Widget tree teardown — ignore.
     }
+    for (final c in [
+      startMinCtrl,
+      startMaxCtrl,
+      delayMinCtrl,
+      delayMaxCtrl,
+      hitsMinCtrl,
+      hitsMaxCtrl,
+      iterCtrl,
+    ]) {
+      c.removeListener(_pushLiveConfig);
+    }
+    _presetStore?.dispose();
     super.dispose();
+  }
+
+  /// Snapshot current controller/group state into the preset store so the
+  /// "— modified" suffix and Save… enablement stay live.
+  void _pushLiveConfig() {
+    final store = _presetStore;
+    if (store == null) return;
+    store.setLiveConfig(_currentConfigForPresetTracking());
+  }
+
+  DrillConfig _currentConfigForPresetTracking() {
+    return DrillConfig(
+      programType: ProgramType.programA,
+      startMin: double.tryParse(startMinCtrl.text) ?? 1.0,
+      startMax: double.tryParse(startMaxCtrl.text) ?? 3.0,
+      delayMin: double.tryParse(delayMinCtrl.text) ?? 0.5,
+      delayMax: double.tryParse(delayMaxCtrl.text) ?? 2.0,
+      hitsMin: (double.tryParse(hitsMinCtrl.text) ?? 1).toInt(),
+      hitsMax: (double.tryParse(hitsMaxCtrl.text) ?? 3).toInt(),
+      groups: groups
+          .map((g) => TargetGroup(
+                id: g.id,
+                name: g.name,
+                targetIds: List<int>.from(g.targetIds),
+              ))
+          .toList(),
+      targetIds: groups.expand((g) => g.targetIds).toList(),
+      noShootIds: const <int>[],
+      iterations: (double.tryParse(iterCtrl.text) ?? 5).toInt(),
+    );
+  }
+
+  /// Loads the currently-selected preset into controllers + group state.
+  /// Program A: if any referenced target is offline, we load only the
+  /// timing/iteration fields and SnackBar the missing ids.
+  void _onPresetLoaded() {
+    final store = _presetStore;
+    if (store == null) return;
+    final selId = store.selectedPresetId;
+    if (selId == null) {
+      // Deselect — keep controllers as-is.
+      _pushLiveConfig();
+      return;
+    }
+    final preset = store.presets.firstWhere(
+      (p) => p.id == selId,
+      orElse: () => throw StateError('selected preset vanished'),
+    );
+    final cfg = preset.config;
+
+    // Always load timing + iteration fields.
+    startMinCtrl.text = cfg.startMin.toStringAsFixed(2);
+    startMaxCtrl.text = cfg.startMax.toStringAsFixed(2);
+    delayMinCtrl.text = cfg.delayMin.toStringAsFixed(2);
+    delayMaxCtrl.text = cfg.delayMax.toStringAsFixed(2);
+    hitsMinCtrl.text = cfg.hitsMin.toStringAsFixed(2);
+    hitsMaxCtrl.text = cfg.hitsMax.toStringAsFixed(2);
+    iterCtrl.text = cfg.iterations.toStringAsFixed(2);
+
+    // Check whether every referenced target is online before loading group
+    // assignments. Offline targets -> SnackBar + timing-only load.
+    final state = context.read<AppState>();
+    final onlineIds = state.targets
+        .where((t) => t.isOnline)
+        .map((t) => t.id)
+        .toSet();
+    final missing = cfg.targetIds.where((id) => !onlineIds.contains(id)).toList()
+      ..sort();
+
+    if (missing.isEmpty) {
+      setState(() {
+        groups = cfg.groups
+            .map((g) => TargetGroup(
+                  id: g.id,
+                  name: g.name,
+                  targetIds: List<int>.from(g.targetIds),
+                ))
+            .toList();
+        // Ensure we always have 5 groups so the existing layout renders.
+        while (groups.length < 5) {
+          groups.add(TargetGroup(id: groups.length + 1));
+        }
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Preset references targets not online: '
+            '${missing.map((id) => 'T$id').join(', ')}',
+          ),
+        ),
+      );
+      // Leave group state untouched.
+    }
+
+    _pushLiveConfig();
   }
 
   void _onPhaseChanged() {
@@ -130,12 +277,14 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
       }
       groups[selectedGroupIndex!].targetIds.add(targetId);
     });
+    _pushLiveConfig();
   }
 
   void _removeTargetFromGroup(int groupIndex, int targetId) {
     setState(() {
       groups[groupIndex].targetIds.remove(targetId);
     });
+    _pushLiveConfig();
   }
 
   void _openTargetActions(int targetId) {
@@ -198,12 +347,20 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AtriarchSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionLabel('Start Delay (seconds)'),
+      body: Column(
+        children: [
+          if (_presetStore != null)
+            PresetRow(
+              store: _presetStore!,
+              onPresetLoaded: _onPresetLoaded,
+            ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AtriarchSpacing.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionLabel('Start Delay (seconds)'),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -290,8 +447,11 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
               ),
             ),
             const SizedBox(height: AtriarchSpacing.xxl),
-          ],
-        ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

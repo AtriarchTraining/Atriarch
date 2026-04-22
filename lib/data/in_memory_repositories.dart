@@ -35,8 +35,11 @@ class InMemoryPreferencesRepository implements PreferencesRepository {
   }
 
   @override
-  Future<List<DrillPreset>> listPresets() async =>
-      _presets.values.toList(growable: false);
+  Future<List<DrillPreset>> listPresets() async {
+    final all = _presets.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return List<DrillPreset>.unmodifiable(all);
+  }
 
   @override
   Future<DrillPreset?> getPreset(String id) async => _presets[id];

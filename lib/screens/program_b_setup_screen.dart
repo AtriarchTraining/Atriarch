@@ -4,7 +4,9 @@ import '../state/app_state.dart';
 import '../models/drill_config.dart';
 import '../theme/atriarch_theme.dart';
 import '../theme/theme_controller.dart';
+import '../util/preset_store.dart';
 import '../widgets/inc_dec.dart';
+import '../widgets/preset_row.dart';
 import 'drill_running_screen.dart';
 
 class ProgramBSetupScreen extends StatefulWidget {
@@ -25,6 +27,8 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
 
   DrillConfig? _lastConfig;
 
+  PresetStore? _presetStore;
+
   @override
   void initState() {
     super.initState();
@@ -37,6 +41,34 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
       context.read<AppState>().addListener(_onPhaseChanged);
       context.read<ThemeController>().setDrillContextActive(true);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final prefs = context.read<AppState>().preferences;
+      final store = PresetStore(
+        repository: prefs,
+        programType: ProgramType.programB,
+      );
+      await store.init();
+      if (!mounted) {
+        store.dispose();
+        return;
+      }
+      setState(() => _presetStore = store);
+      if (store.selectedPresetId != null) _onPresetLoaded();
+      _pushLiveConfig();
+    });
+
+    for (final c in [
+      startMinCtrl,
+      startMaxCtrl,
+      delayMinCtrl,
+      delayMaxCtrl,
+      hitsMinCtrl,
+      hitsMaxCtrl,
+      iterCtrl,
+    ]) {
+      c.addListener(_pushLiveConfig);
+    }
   }
 
   @override
@@ -51,7 +83,68 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
     } catch (_) {
       // Teardown — ignore.
     }
+    for (final c in [
+      startMinCtrl,
+      startMaxCtrl,
+      delayMinCtrl,
+      delayMaxCtrl,
+      hitsMinCtrl,
+      hitsMaxCtrl,
+      iterCtrl,
+    ]) {
+      c.removeListener(_pushLiveConfig);
+    }
+    _presetStore?.dispose();
     super.dispose();
+  }
+
+  /// Snapshot the current form state into the preset store so "— modified"
+  /// and Save… enablement stay live.
+  void _pushLiveConfig() {
+    final store = _presetStore;
+    if (store == null) return;
+    store.setLiveConfig(_currentConfigForPresetTracking());
+  }
+
+  DrillConfig _currentConfigForPresetTracking() {
+    return DrillConfig(
+      programType: ProgramType.programB,
+      startMin: double.tryParse(startMinCtrl.text) ?? 1.0,
+      startMax: double.tryParse(startMaxCtrl.text) ?? 3.0,
+      delayMin: double.tryParse(delayMinCtrl.text) ?? 0.5,
+      delayMax: double.tryParse(delayMaxCtrl.text) ?? 2.0,
+      hitsMin: (double.tryParse(hitsMinCtrl.text) ?? 1).toInt(),
+      hitsMax: (double.tryParse(hitsMaxCtrl.text) ?? 3).toInt(),
+      targetIds: const <int>[],
+      noShootIds: const <int>[],
+      iterations: (double.tryParse(iterCtrl.text) ?? 5).toInt(),
+    );
+  }
+
+  /// Program B has no group state, so loading a preset just writes timing +
+  /// iteration fields into the controllers. Target assignment is derived at
+  /// drill-start from whichever targets are currently online.
+  void _onPresetLoaded() {
+    final store = _presetStore;
+    if (store == null) return;
+    final selId = store.selectedPresetId;
+    if (selId == null) {
+      _pushLiveConfig();
+      return;
+    }
+    final preset = store.presets.firstWhere(
+      (p) => p.id == selId,
+      orElse: () => throw StateError('selected preset vanished'),
+    );
+    final cfg = preset.config;
+    startMinCtrl.text = cfg.startMin.toStringAsFixed(2);
+    startMaxCtrl.text = cfg.startMax.toStringAsFixed(2);
+    delayMinCtrl.text = cfg.delayMin.toStringAsFixed(2);
+    delayMaxCtrl.text = cfg.delayMax.toStringAsFixed(2);
+    hitsMinCtrl.text = cfg.hitsMin.toStringAsFixed(2);
+    hitsMaxCtrl.text = cfg.hitsMax.toStringAsFixed(2);
+    iterCtrl.text = cfg.iterations.toStringAsFixed(2);
+    _pushLiveConfig();
   }
 
   void _onPhaseChanged() {
@@ -113,11 +206,19 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
     final tokens = context.atriarch;
     return Scaffold(
       appBar: AppBar(title: const Text('Program B - Individual Mode')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AtriarchSpacing.lg),
-        child: Column(
-          children: [
-            _sectionLabel('Start Delay (seconds)'),
+      body: Column(
+        children: [
+          if (_presetStore != null)
+            PresetRow(
+              store: _presetStore!,
+              onPresetLoaded: _onPresetLoaded,
+            ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AtriarchSpacing.lg),
+              child: Column(
+                children: [
+                  _sectionLabel('Start Delay (seconds)'),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -174,8 +275,11 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
               ),
             ),
             const SizedBox(height: AtriarchSpacing.xxl),
-          ],
-        ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

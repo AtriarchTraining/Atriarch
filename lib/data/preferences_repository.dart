@@ -45,9 +45,15 @@ class PreferencesRepository {
 
   // ---------------------------------------------------------------- Presets
 
+  /// Returns every preset in the box, sorted alphabetically by `name`
+  /// (case-insensitive). Gate 2 #14: a stable order makes the preset dropdown
+  /// predictable, and alpha-sort is the natural user-facing ordering (vs raw
+  /// Hive insertion order, which has no meaning).
   Future<List<DrillPreset>> listPresets() async {
     final box = _requirePresets();
-    return box.values.toList(growable: false);
+    final all = box.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return List<DrillPreset>.unmodifiable(all);
   }
 
   Future<DrillPreset?> getPreset(String id) async {
