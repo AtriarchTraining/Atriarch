@@ -17,7 +17,7 @@
 //            011, 021, 031, 041, 051 (level 2, children of 01)
 //            012, 022, 032, 042, 052 (level 2, children of 02)
 //            etc.
-#define NODE_ADDRESS    01  // <-- CHANGE THIS PER TARGET
+#define NODE_ADDRESS    02  // <-- CHANGE THIS PER TARGET
 
 // --- Command Constants (transmitter -> target) ---
 #define CMD_ACTIVATE    1
@@ -44,7 +44,13 @@
 #define ACK_MAX_RETRIES         3
 
 // --- BLE safe-stop watchdog (target) ---
-#define BLE_SILENCE_TIMEOUT_MS  5000
+// 60s is the Gate 1 pragmatic setting: long enough that slow drills don't
+// trip the watchdog mid-wait, short enough that a truly-dead transmitter
+// still safe-stops the fleet within a minute. The eng plan §1.2 proposed
+// 5000ms but that fires during normal wait-for-hit on Program B drills.
+// v2 proper fix: have the transmitter send a 2-second keepalive CMD_PING
+// to any target currently in ACTIVE_* state, then this can drop back to 5s.
+#define BLE_SILENCE_TIMEOUT_MS  60000
 
 // --- Color Modes ---
 #define COLOR_NORMAL    1
@@ -65,7 +71,18 @@
 #define LATE_HIT_FLASH_MS   200
 
 // --- Vibration ---
-#define VIB_THRESHOLD       20  // pulseIn microseconds; tune per hardware
+#define VIB_THRESHOLD       20  // pulseIn microseconds; legacy, unused by digitalRead detection
+
+// SW-420 modules ship with two output polarities. To figure out which one
+// your module is, observe the DO-LED on the sensor module at rest and on tap:
+//   - DO-LED OFF at rest, briefly ON when you tap  ->  set to LOW  (D0 is
+//       active-LOW on trigger — comparator sinks current only during impact)
+//   - DO-LED ON  at rest, briefly OFF when you tap ->  set to HIGH (D0 is
+//       active-HIGH on trigger — comparator sinks at rest, releases on impact)
+//
+// Jeremy's 2026-04-21 batch is the HIGH variant. If you install a different
+// module and hits stop registering OR targets self-trigger at rest, flip this.
+#define VIB_TRIGGER_LEVEL   HIGH
 
 // --- NRF24 Message Size ---
 // BREAKING: bumped from 3 to 4. payload[3] = cmdSeq for ACK correlation.

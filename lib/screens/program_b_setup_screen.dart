@@ -58,6 +58,12 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
     if (!mounted) return;
     final state = context.read<AppState>();
     if (state.phase == DrillPhase.running) {
+      // Detach BEFORE navigating: during the ~300ms pushReplacement
+      // animation, Setup is still listening and phase is still `running`,
+      // so every HIT/DONE notifyListeners would re-fire this and stack
+      // duplicate Running screens. Verified on iOS 26 with over-sensitive
+      // SW-420. See commit e7f926b on feature/system-v2.
+      state.removeListener(_onPhaseChanged);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const DrillRunningScreen()),

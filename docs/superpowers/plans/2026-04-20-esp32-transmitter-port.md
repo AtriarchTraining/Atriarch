@@ -1,9 +1,16 @@
 ---
-status: ACTIVE — Phase 1 toolchain complete (2026-04-20); awaiting hardware for Phase 2
+status: COMPLETE — All 5 phases passed 2026-04-21
 installed:
   esp32_core: 3.3.8
   nimble_arduino: 2.5.0
   fqbn: esp32:esp32:esp32
+verification:
+  phase_1_toolchain: PASS (esp32 core + NimBLE installed, FQBN resolves)
+  phase_1_blink_test: PASS (ESP32 D0WD-V3 rev 3.1 MAC f4:2d:c9:6a:9b:08, blink sketch uploaded and running)
+  phase_2_hardware: PASS (NRF24 probe sketch confirmed isChipConnected=true; fast-blink visual confirmed by Jeremy)
+  phase_3_firmware_port: PASS (ESP32 firmware booted, BLE advertising as Atriarch-TX, NRF24 healthy)
+  phase_4_ble_pair: PASS (iPhone + iOS 26 + UUID .str128 fix)
+  phase_5_e2e_drill: PASS (3-target Program B with BB-gun live-fire validation; int16_t wire, STOP-flood guard, nav listener detach, MIC-vs-VIB routing, VIB_TRIGGER_LEVEL polarity, dead-battery root cause all resolved)
 ---
 
 # ESP32 Transmitter Port Plan (Gate 1 #10.5)
@@ -265,7 +272,30 @@ Check `lib/services/ble_service.dart` for any name-based filtering (grep for `"H
 
 ---
 
-## Phase 5 — End-to-end drill test
+## Phase 5 — End-to-end drill test (COMPLETE 2026-04-21)
+
+### Outcome
+
+**Passed, with real-world validation beyond the acceptance criteria.** Multi-target Program B drill works end-to-end on ESP32 transmitter with 3 targets (T1/T2/T3). BB-gun live-fire test through cardboard registered hits reliably.
+
+### Bugs found and fixed this phase
+
+1. **BLE UUID match failure** (iOS 26): `.str128.toLowerCase()` normalization in `ble_service.dart`
+2. **int16/int32 wire-width mismatch** (AVR 16-bit vs ESP32 32-bit): all NRF24 payload arrays changed to `int16_t`
+3. **STOP-flood bug**: `stopDrill()` was writing unconditionally; guarded with phase check
+4. **Scroll-glitch nav bug**: setup/running screen listeners re-fired `pushReplacement` during transition animation; detach listener before navigating
+5. **MIC vs VIB header** on target PCB: SW-420 D0 must plug into P3 VIB, not P6 MIC (maps to A3 via VIB.S silkscreen)
+6. **Dead batteries masquerading as sensor issues**: VCC sag from depleted 18650s made LM393 comparator saturate; root-caused by multimeter
+7. **SW-420 polarity variance**: module variant was active-HIGH at rest, not active-LOW as firmware assumed; added `VIB_TRIGGER_LEVEL` config macro
+8. **Diagnostic logging added**: `[TX]`, `[ACT]`, `[ACK-FAIL]` on transmitter; firmware-side debug of full activation round-trip
+
+### Known hardware-side issues (not Phase 5 blockers)
+
+- **T1 NRF24 intermittency**: occasional unreachable, recovers on next activation. Suspect: decoupling cap missing or NRF24 module seating. Bench fix deferred.
+- **SW-420 cross-target false positives**: shooting T1 can trip T2's sensor via transmitted vibration when targets share stakes/ground. Inherent to binary sensor; fix is v2 accelerometer with amplitude threshold.
+- **Sensor pot tuning per-unit**: each SW-420 has a slightly different sweet spot; instructor must tune per unit on first setup.
+
+### Original procedure (kept for reference)
 
 With 2 targets flashed via USBasp (Gate 1 firmware, unique `NODE_ADDRESS=01` and `02`) and ESP32 transmitter running:
 
