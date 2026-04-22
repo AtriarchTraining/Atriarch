@@ -23,10 +23,11 @@ class AtriarchApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Atriarch',
-      theme: buildAtriarchLightTheme(),
+      theme: buildAtriarchDarkTheme(),
+      darkTheme: buildAtriarchDarkTheme(),
+      themeMode: ThemeMode.dark,
       // Web runs have no native BLE (flutter_blue_plus doesn't support web).
-      // Skip the Bluetooth adapter gate entirely so Chrome previews land on
-      // Home — useful for UI reviews without hardware.
+      // Skip the Bluetooth adapter gate so Chrome previews land on Home.
       home: kIsWeb
           ? const HomeScreen()
           : StreamBuilder<BluetoothAdapterState>(

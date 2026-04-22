@@ -2,71 +2,122 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
+import '../theme/atriarch_theme.dart';
+import '../widgets/tactical/tactical_card.dart';
+import '../widgets/tactical/tactical_scaffold.dart';
+import '../widgets/tactical/tactical_section.dart';
+import '../widgets/tactical/tactical_status_chip.dart';
 import 'device_discovery_screen.dart';
 import 'program_a_setup_screen.dart';
 import 'program_b_setup_screen.dart';
-
-// Implements addendum §1 Home screen spec: persistent connection banner +
-// 3 tappable rows (Target Setup, Program A, Program B). Style tokens land
-// with lib/theme/atriarch_theme.dart (addendum §DESIGN.md).
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Atriarch')),
-      body: Column(
+    return TacticalScaffold(
+      title: 'ATRIARCH // HOME',
+      body: ListView(
+        padding: const EdgeInsets.all(AtriarchSpacing.lg),
         children: [
           const _ConnectionBanner(),
+          const SizedBox(height: AtriarchSpacing.lg),
+          const TacticalSection(code: 'PARAM_01', trailing: 'PROTOCOL_SELECT'),
+          const SizedBox(height: AtriarchSpacing.sm),
+          _HomeCard(
+            code: 'TARGET_SETUP',
+            title: 'TARGET SETUP',
+            subtitle: 'Scan the fleet, identify units, mark no-shoots.',
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Target Discovery screen not built yet.'),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          _HomeCard(
+            code: 'PROGRAM_A',
+            title: 'GROUP MODE',
+            subtitle: 'Up to 5 groups. One active target per group.',
+            accent: true,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ProgramASetupScreen(),
+              ),
+            ),
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          _HomeCard(
+            code: 'PROGRAM_B',
+            title: 'INDIVIDUAL MODE',
+            subtitle: 'Every target runs its own reaction drill.',
+            accent: true,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ProgramBSetupScreen(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeCard extends StatelessWidget {
+  final String code;
+  final String title;
+  final String subtitle;
+  final bool accent;
+  final VoidCallback onTap;
+
+  const _HomeCard({
+    required this.code,
+    required this.title,
+    required this.subtitle,
+    this.accent = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.atriarch;
+    return TacticalCard(
+      accent: accent ? tokens.statusHit : tokens.border,
+      padding: const EdgeInsets.all(AtriarchSpacing.lg),
+      onTap: onTap,
+      child: Row(
+        children: [
           Expanded(
-            child: ListView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _HomeRow(
-                  icon: Icons.gps_fixed,
-                  title: 'Target Setup',
-                  subtitle: 'Scan the fleet, identify units, mark no-shoots.',
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Target Discovery screen (Task 4.1) not built yet.',
-                        ),
-                      ),
-                    );
-                  },
+                Text(
+                  code,
+                  style: AtriarchText.labelTiny(color: tokens.statusHit),
                 ),
-                const Divider(height: 1),
-                _HomeRow(
-                  icon: Icons.groups,
-                  title: 'Program A — Grouped',
-                  subtitle:
-                      'One active target per group at a time. Up to 5 groups.',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ProgramASetupScreen(),
-                    ),
-                  ),
+                const SizedBox(height: 4),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                const Divider(height: 1),
-                _HomeRow(
-                  icon: Icons.person,
-                  title: 'Program B — Individual',
-                  subtitle:
-                      'Each target runs its own reaction drill independently.',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ProgramBSetupScreen(),
-                    ),
-                  ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: tokens.textTertiary),
                 ),
-                const Divider(height: 1),
               ],
             ),
           ),
+          Icon(Icons.chevron_right, color: tokens.textTertiary),
         ],
       ),
     );
@@ -78,6 +129,7 @@ class _ConnectionBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.atriarch;
     final bleService = context.read<AppState>().bleService;
     return StreamBuilder<BluetoothConnectionState>(
       stream: bleService.connectionState,
@@ -87,101 +139,39 @@ class _ConnectionBanner extends StatelessWidget {
       builder: (context, snapshot) {
         final connected = snapshot.data == BluetoothConnectionState.connected;
         final deviceName = bleService.device?.platformName;
-        final label = connected
-            ? 'Connected${deviceName != null && deviceName.isNotEmpty ? " · $deviceName" : ""}'
-            : 'Disconnected — tap to reconnect';
-        return Material(
-          color: connected ? Colors.green.shade700 : Colors.red.shade700,
-          child: InkWell(
-            onTap: connected
-                ? null
-                : () => Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const DeviceDiscoveryScreen(),
-                      ),
-                    ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 10,
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    connected ? Icons.bluetooth : Icons.bluetooth_disabled,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
-                      ),
+        final accent = connected ? tokens.statusLive : tokens.statusViolation;
+        return TacticalCard(
+          accent: accent,
+          background: accent.withValues(alpha: 0.08),
+          onTap: connected
+              ? null
+              : () => Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const DeviceDiscoveryScreen(),
                     ),
                   ),
-                ],
+          child: Row(
+            children: [
+              TacticalStatusChip(
+                color: accent,
+                label: connected ? 'connected' : 'disconnected',
               ),
-            ),
+              const SizedBox(width: AtriarchSpacing.sm),
+              Expanded(
+                child: Text(
+                  connected
+                      ? (deviceName != null && deviceName.isNotEmpty
+                          ? deviceName
+                          : 'TRANSMITTER LINKED')
+                      : 'TAP TO RECONNECT',
+                  style: AtriarchText.labelTiny(color: tokens.textPrimary),
+                ),
+              ),
+            ],
           ),
         );
       },
-    );
-  }
-}
-
-class _HomeRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _HomeRow({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        child: Row(
-          children: [
-            Icon(icon, size: 28),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
-      ),
     );
   }
 }

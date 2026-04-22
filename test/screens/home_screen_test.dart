@@ -6,7 +6,7 @@ import 'package:atriarch/theme/atriarch_theme.dart';
 import 'package:atriarch/screens/home_screen.dart';
 
 void main() {
-  testWidgets('app boots to home screen with dark theme', (tester) async {
+  testWidgets('renders three tactical program rows', (tester) async {
     await tester.pumpWidget(
       ChangeNotifierProvider(
         create: (_) => AppState(),
@@ -17,6 +17,9 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.text('ATRIARCH // HOME'), findsOneWidget);
+
+    expect(find.text('TARGET_SETUP'), findsOneWidget);
+    expect(find.text('PROGRAM_A'), findsOneWidget);
+    expect(find.text('PROGRAM_B'), findsOneWidget);
   });
 }

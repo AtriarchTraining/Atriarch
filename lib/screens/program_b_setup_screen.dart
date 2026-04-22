@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../state/app_state.dart';
 import '../models/drill_config.dart';
+import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
-import '../widgets/inc_dec.dart';
+import '../widgets/tactical/arming_failed_banner.dart';
+import '../widgets/tactical/tactical_card.dart';
+import '../widgets/tactical/tactical_min_max_card.dart';
+import '../widgets/tactical/tactical_primary_button.dart';
+import '../widgets/tactical/tactical_scaffold.dart';
+import '../widgets/tactical/tactical_section.dart';
+import '../widgets/tactical/tactical_status_chip.dart';
+import '../widgets/tactical/tactical_stepper.dart';
 import 'drill_running_screen.dart';
 
 class ProgramBSetupScreen extends StatefulWidget {
@@ -18,11 +25,12 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
   final startMaxCtrl = TextEditingController(text: '3.00');
   final delayMinCtrl = TextEditingController(text: '0.50');
   final delayMaxCtrl = TextEditingController(text: '2.00');
-  final hitsMinCtrl = TextEditingController(text: '1.00');
-  final hitsMaxCtrl = TextEditingController(text: '3.00');
-  final iterCtrl = TextEditingController(text: '5.00');
+  final hitsMinCtrl = TextEditingController(text: '1');
+  final hitsMaxCtrl = TextEditingController(text: '3');
+  final iterCtrl = TextEditingController(text: '5');
 
   DrillConfig? _lastConfig;
+  AppState? _boundState;
 
   @override
   void initState() {
@@ -33,17 +41,16 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<AppState>().addListener(_onPhaseChanged);
+      final state = context.read<AppState>();
+      _boundState = state;
+      state.addListener(_onPhaseChanged);
     });
   }
 
   @override
   void dispose() {
-    try {
-      context.read<AppState>().removeListener(_onPhaseChanged);
-    } catch (_) {
-      // Teardown — ignore.
-    }
+    _boundState?.removeListener(_onPhaseChanged);
+    _boundState = null;
     super.dispose();
   }
 
@@ -51,12 +58,11 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
     if (!mounted) return;
     final state = context.read<AppState>();
     if (state.phase == DrillPhase.running) {
-      // Detach BEFORE pushReplacement. The transition animates for ~300ms
-      // during which Setup is still in the widget tree and still receives
-      // notifyListeners from AppState — every HIT event during that window
-      // would otherwise re-fire pushReplacement and stack identical Running
-      // screens, producing the rapid horizontal-slide glitch observed in
-      // release builds when the sensor fires quickly.
+      // Detach BEFORE navigating: during the ~300ms pushReplacement
+      // animation, Setup is still listening and phase is still `running`,
+      // so every HIT/DONE notifyListeners would re-fire this and stack
+      // duplicate Running screens. Verified on iOS 26 with over-sensitive
+      // SW-420. See commit e7f926b on feature/system-v2.
       state.removeListener(_onPhaseChanged);
       Navigator.pushReplacement(
         context,
@@ -73,7 +79,9 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
 
     if (onlineTargets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No targets online. Run Target Setup first.')),
+        const SnackBar(
+          content: Text('No targets online. Run Target Setup first.'),
+        ),
       );
       return null;
     }
@@ -84,12 +92,12 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
       startMax: double.tryParse(startMaxCtrl.text) ?? 3.0,
       delayMin: double.tryParse(delayMinCtrl.text) ?? 0.5,
       delayMax: double.tryParse(delayMaxCtrl.text) ?? 2.0,
-      hitsMin: (double.tryParse(hitsMinCtrl.text) ?? 1).toInt(),
-      hitsMax: (double.tryParse(hitsMaxCtrl.text) ?? 3).toInt(),
+      hitsMin: int.tryParse(hitsMinCtrl.text) ?? 1,
+      hitsMax: int.tryParse(hitsMaxCtrl.text) ?? 3,
       targetIds: onlineTargets.map((t) => t.id).toList(),
       noShootIds:
           onlineTargets.where((t) => t.isNoShoot).map((t) => t.id).toList(),
-      iterations: (double.tryParse(iterCtrl.text) ?? 5).toInt(),
+      iterations: int.tryParse(iterCtrl.text) ?? 5,
     );
   }
 
@@ -111,218 +119,154 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.atriarch;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Program B - Individual Mode')),
-      floatingActionButton: const _ScanFab(),
-      body: SingleChildScrollView(
+    return TacticalScaffold(
+      title: 'PROGRAM_CONFIG',
+      trailing: Consumer<AppState>(
+        builder: (_, state, __) {
+          final online = state.targets.where((t) => t.isOnline).length;
+          return TacticalStatusChip(
+            color:
+                online > 0 ? tokens.statusLive : tokens.statusOffline,
+            label: online > 0 ? 'live' : 'offline',
+          );
+        },
+      ),
+      body: ListView(
         padding: const EdgeInsets.all(AtriarchSpacing.lg),
-        child: Column(
-          children: [
-            _sectionLabel('Start Delay (seconds)'),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                IncDec(startMinCtrl, 'Min', 0.25),
-                IncDec(startMaxCtrl, 'Max', 0.25),
-              ],
-            ),
-            const SizedBox(height: AtriarchSpacing.xl),
-            _sectionLabel('Time Between Activations (seconds)'),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                IncDec(delayMinCtrl, 'Min', 0.25),
-                IncDec(delayMaxCtrl, 'Max', 0.25),
-              ],
-            ),
-            const SizedBox(height: AtriarchSpacing.xl),
-            _sectionLabel('Required Hits'),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                IncDec(hitsMinCtrl, 'Min'),
-                IncDec(hitsMaxCtrl, 'Max'),
-              ],
-            ),
-            const SizedBox(height: AtriarchSpacing.xl),
-            _sectionLabel('Iterations per Target'),
-            Center(child: IncDec(iterCtrl, 'Count')),
-            const SizedBox(height: AtriarchSpacing.lg),
-            Consumer<AppState>(
-              builder: (_, state, __) {
-                final online =
-                    state.targets.where((t) => t.isOnline).length;
-                final noShoot = state.targets
-                    .where((t) => t.isOnline && t.isNoShoot)
-                    .length;
-                return Text('$online target(s) online, $noShoot no-shoot',
-                    style: TextStyle(color: tokens.textTertiary));
-              },
-            ),
-            const SizedBox(height: AtriarchSpacing.xxl),
-            Consumer<AppState>(
-              builder: (_, state, __) {
-                if (state.phase == DrillPhase.armingFailed) {
-                  return _ArmingFailedBanner(onRetry: _retryDrill);
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-            Consumer<AppState>(
-              builder: (_, state, __) => _StartButton(
-                phase: state.phase,
-                onStart: _startDrill,
-              ),
-            ),
-            const SizedBox(height: AtriarchSpacing.xxl),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _sectionLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AtriarchSpacing.sm),
-      child: Text(text,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-    );
-  }
-}
-
-class _StartButton extends StatelessWidget {
-  final DrillPhase phase;
-  final VoidCallback onStart;
-
-  const _StartButton({required this.phase, required this.onStart});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.atriarch;
-    final arming = phase == DrillPhase.arming;
-    final disabled = arming;
-
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: Semantics(
-        button: true,
-        enabled: !disabled,
-        label: arming
-            ? 'Arming drill. Waiting for transmitter.'
-            : 'Start drill',
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: arming ? tokens.statusOffline : tokens.statusLive,
-            foregroundColor: tokens.bgBase,
-            disabledBackgroundColor: tokens.statusOffline,
-            disabledForegroundColor: tokens.bgBase,
-          ),
-          onPressed: disabled ? null : onStart,
-          child: arming
-              ? Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: tokens.bgBase,
-                      ),
-                    ),
-                    const SizedBox(width: AtriarchSpacing.md),
-                    Text(
-                      'ARMING…',
-                      style: TextStyle(
-                          fontSize: 20, color: tokens.bgBase, letterSpacing: 2),
-                    ),
-                  ],
-                )
-              : Text(
-                  'START DRILL',
-                  style: TextStyle(fontSize: 20, color: tokens.bgBase),
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-// Gate-1 transitional: minimal scan entry point so the Program B end-to-end
-// test is reachable today. The Gate 2 full Target Setup screen (addendum §5:
-// tap-and-hold, Walk-the-Range, photo-map) will supersede this FAB.
-class _ScanFab extends StatelessWidget {
-  const _ScanFab();
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.atriarch;
-    return Consumer<AppState>(
-      builder: (_, state, __) {
-        final scanning = state.isScanning;
-        return FloatingActionButton.extended(
-          onPressed: scanning
-              ? null
-              : () async {
-                  await state.discoverTargets();
-                },
-          backgroundColor: tokens.textPrimary,
-          foregroundColor: tokens.bgBase,
-          icon: scanning
-              ? SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: tokens.bgBase,
-                  ),
-                )
-              : const Icon(Icons.refresh),
-          label: Text(scanning ? 'SCANNING…' : 'SCAN FOR TARGETS'),
-        );
-      },
-    );
-  }
-}
-
-class _ArmingFailedBanner extends StatelessWidget {
-  final VoidCallback onRetry;
-
-  const _ArmingFailedBanner({required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.atriarch;
-    return Container(
-      margin: const EdgeInsets.only(bottom: AtriarchSpacing.md),
-      padding: const EdgeInsets.all(AtriarchSpacing.md),
-      decoration: BoxDecoration(
-        color: tokens.bgElevated,
-        border: Border.all(color: tokens.statusViolation),
-        borderRadius: BorderRadius.circular(AtriarchRadius.md),
-      ),
-      child: Row(
         children: [
-          Icon(Icons.error_outline, color: tokens.statusViolation),
-          const SizedBox(width: AtriarchSpacing.md),
-          Expanded(
-            child: Text(
-              'No response from transmitter. Check connection.',
-              style: TextStyle(color: tokens.textPrimary),
+          _header(context),
+          const SizedBox(height: AtriarchSpacing.lg),
+          const TacticalSection(
+            code: 'PARAM_00',
+            trailing: 'NODE_SCAN',
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          Consumer<AppState>(
+            builder: (_, state, __) {
+              final scanning = state.isScanning;
+              return TacticalPrimaryButton(
+                label: scanning ? 'scanning' : 'scan for targets',
+                icon: scanning ? null : Icons.refresh,
+                variant: scanning
+                    ? TacticalButtonVariant.loading
+                    : TacticalButtonVariant.primary,
+                onPressed: () => state.discoverTargets(),
+              );
+            },
+          ),
+          const SizedBox(height: AtriarchSpacing.xl),
+          const TacticalSection(code: 'PARAM_01', trailing: 'TIMING'),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalMinMaxCard(
+            title: 'START DELAY',
+            rangeHint: '0.00 – 10.00 SEC',
+            minController: startMinCtrl,
+            maxController: startMaxCtrl,
+            step: 0.25,
+            unit: 'sec',
+            min: 0,
+            max: 10,
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalMinMaxCard(
+            title: 'TIME BETWEEN ACTIVATIONS',
+            rangeHint: '0.00 – 10.00 SEC',
+            minController: delayMinCtrl,
+            maxController: delayMaxCtrl,
+            step: 0.25,
+            unit: 'sec',
+            min: 0,
+            max: 10,
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalMinMaxCard(
+            title: 'REQUIRED HITS',
+            rangeHint: '1 – 20',
+            minController: hitsMinCtrl,
+            maxController: hitsMaxCtrl,
+            step: 1,
+            unit: 'hits',
+            min: 1,
+            max: 20,
+            integer: true,
+          ),
+          const SizedBox(height: AtriarchSpacing.xl),
+          const TacticalSection(code: 'PARAM_02', trailing: 'ITERATIONS'),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalCard(
+            accent: tokens.statusHit,
+            child: TacticalStepper(
+              controller: iterCtrl,
+              label: 'iterations per target',
+              unit: 'count',
+              step: 1,
+              min: 1,
+              max: 50,
+              integer: true,
             ),
           ),
-          const SizedBox(width: AtriarchSpacing.sm),
-          Semantics(
-            button: true,
-            label: 'Retry starting the drill',
-            child: OutlinedButton(
-              onPressed: onRetry,
-              child: const Text('Retry'),
-            ),
+          const SizedBox(height: AtriarchSpacing.xl),
+          Consumer<AppState>(
+            builder: (_, state, __) {
+              final online = state.targets.where((t) => t.isOnline).length;
+              final noShoot = state.targets
+                  .where((t) => t.isOnline && t.isNoShoot)
+                  .length;
+              return Text(
+                '$online TARGET(S) ONLINE // $noShoot NO-SHOOT',
+                style: AtriarchText.labelTiny(color: tokens.textTertiary),
+              );
+            },
           ),
+          const SizedBox(height: AtriarchSpacing.xl),
+          Consumer<AppState>(
+            builder: (_, state, __) {
+              if (state.phase == DrillPhase.armingFailed) {
+                return Padding(
+                  padding: const EdgeInsets.only(
+                    bottom: AtriarchSpacing.md,
+                  ),
+                  child: TacticalArmingFailedBanner(onRetry: _retryDrill),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          Consumer<AppState>(
+            builder: (_, state, __) {
+              final arming = state.phase == DrillPhase.arming;
+              return TacticalPrimaryButton(
+                label: arming ? 'arming' : 'commit // start drill',
+                icon: arming ? null : Icons.bolt,
+                variant: arming
+                    ? TacticalButtonVariant.loading
+                    : TacticalButtonVariant.primary,
+                onPressed: _startDrill,
+              );
+            },
+          ),
+          const SizedBox(height: AtriarchSpacing.xxl),
         ],
       ),
     );
   }
+
+  Widget _header(BuildContext context) {
+    final tokens = context.atriarch;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'PROTOCOL_STATUS',
+          style: AtriarchText.labelTiny(color: tokens.textTertiary),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'PROGRAM B / INDIVIDUAL MODE',
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
+      ],
+    );
+  }
 }
+

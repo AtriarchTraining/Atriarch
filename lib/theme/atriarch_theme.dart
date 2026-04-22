@@ -1,6 +1,5 @@
-// Atriarch design tokens + light theme (Gate 1).
-// DARK theme + ambient-light auto-toggle land in Gate 2.
-// See DESIGN.md at repo root for the full spec.
+// Atriarch design tokens + dark tactical theme.
+// See docs/superpowers/specs/2026-04-20-tactical-redesign-design.md.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -68,28 +67,6 @@ class AtriarchTokens extends ThemeExtension<AtriarchTokens> {
         return statusOffline;
     }
   }
-
-  static const AtriarchTokens light = AtriarchTokens(
-    bgBase: Color(0xFFFFFFFF),
-    bgElevated: Color(0xFFF2F5FA),
-    bgCard: Color(0xFFE8EDF5),
-    border: Color(0xFFC3CBD9),
-    textPrimary: Color(0xFF0A0D12),
-    textSecondary: Color(0xFF3A4355),
-    textTertiary: Color(0xFF6A7388),
-    statusArmed: Color(0xFFB76E00),
-    statusLive: Color(0xFF0E7A3E),
-    statusHit: Color(0xFF1E4FC7),
-    statusViolation: Color(0xFFB3001F),
-    statusLate: Color(0xFFB36F00),
-    statusOffline: Color(0xFF6A7388),
-    statusUnreachable: Color(0xFFB3001F),
-    groupMagenta: Color(0xFFC71585),
-    groupCyan: Color(0xFF0891B2),
-    groupYellow: Color(0xFFB45309),
-    groupPurple: Color(0xFF6D28D9),
-    groupLime: Color(0xFF4D7C0F),
-  );
 
   static const AtriarchTokens dark = AtriarchTokens(
     bgBase: Color(0xFF0A0D12),
@@ -200,88 +177,113 @@ class AtriarchSpacing {
 }
 
 class AtriarchRadius {
-  static const double sm = 4;
-  static const double md = 8;
-  static const double lg = 12;
+  static const double sm = 0;
+  static const double md = 0;
+  static const double lg = 0;
+  static const double full = 9999;
 
   const AtriarchRadius._();
 }
 
-extension AtriarchThemeContext on BuildContext {
-  AtriarchTokens get atriarch =>
-      Theme.of(this).extension<AtriarchTokens>() ?? AtriarchTokens.light;
+class AtriarchText {
+  static TextStyle labelTiny({Color? color}) => GoogleFonts.spaceGrotesk(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 2.0,
+        color: color,
+        height: 1.2,
+      );
+
+  const AtriarchText._();
 }
 
-ThemeData buildAtriarchLightTheme() {
-  const tokens = AtriarchTokens.light;
+extension AtriarchThemeContext on BuildContext {
+  AtriarchTokens get atriarch =>
+      Theme.of(this).extension<AtriarchTokens>() ?? AtriarchTokens.dark;
+}
 
-  final sansTheme = GoogleFonts.interTightTextTheme();
+ThemeData buildAtriarchDarkTheme() {
+  const tokens = AtriarchTokens.dark;
+
+  final sansTheme = GoogleFonts.spaceGroteskTextTheme();
   final mono = GoogleFonts.jetBrainsMono;
 
   final textTheme = sansTheme.copyWith(
     displayLarge: mono(
       fontSize: 96,
-      fontWeight: FontWeight.w300,
+      fontWeight: FontWeight.w700,
       color: tokens.textPrimary,
+      letterSpacing: -2,
     ),
     displayMedium: mono(
       fontSize: 48,
-      fontWeight: FontWeight.w300,
+      fontWeight: FontWeight.w700,
       color: tokens.textPrimary,
+      letterSpacing: -1,
     ),
     displaySmall: mono(
+      fontSize: 36,
+      fontWeight: FontWeight.w700,
+      color: tokens.textPrimary,
+      letterSpacing: -1,
+    ),
+    headlineMedium: GoogleFonts.spaceGrotesk(
       fontSize: 28,
-      fontWeight: FontWeight.w500,
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.5,
       color: tokens.textPrimary,
     ),
-    headlineMedium: GoogleFonts.interTight(
+    titleLarge: GoogleFonts.spaceGrotesk(
       fontSize: 20,
       fontWeight: FontWeight.w700,
+      letterSpacing: -0.3,
       color: tokens.textPrimary,
     ),
-    titleLarge: GoogleFonts.interTight(
-      fontSize: 20,
-      fontWeight: FontWeight.w700,
+    titleMedium: GoogleFonts.spaceGrotesk(
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
       color: tokens.textPrimary,
     ),
-    titleMedium: GoogleFonts.interTight(
+    bodyLarge: GoogleFonts.spaceGrotesk(
       fontSize: 16,
       fontWeight: FontWeight.w500,
       color: tokens.textPrimary,
     ),
-    bodyLarge: GoogleFonts.interTight(
-      fontSize: 16,
-      fontWeight: FontWeight.w500,
-      color: tokens.textPrimary,
-    ),
-    bodyMedium: GoogleFonts.interTight(
+    bodyMedium: GoogleFonts.spaceGrotesk(
       fontSize: 14,
       fontWeight: FontWeight.w500,
       color: tokens.textPrimary,
     ),
-    bodySmall: GoogleFonts.interTight(
+    bodySmall: GoogleFonts.spaceGrotesk(
       fontSize: 12,
       fontWeight: FontWeight.w500,
       color: tokens.textSecondary,
     ),
-    labelLarge: GoogleFonts.interTight(
+    labelLarge: GoogleFonts.spaceGrotesk(
       fontSize: 14,
       fontWeight: FontWeight.w700,
+      letterSpacing: 2.0,
       color: tokens.textPrimary,
     ),
-    labelSmall: GoogleFonts.interTight(
+    labelMedium: GoogleFonts.spaceGrotesk(
       fontSize: 12,
-      fontWeight: FontWeight.w500,
-      letterSpacing: 0.8,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 2.4,
+      color: tokens.textPrimary,
+    ),
+    labelSmall: GoogleFonts.spaceGrotesk(
+      fontSize: 10,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 2.0,
       color: tokens.textTertiary,
     ),
   );
 
   final colorScheme = ColorScheme(
-    brightness: Brightness.light,
-    primary: tokens.textPrimary,
+    brightness: Brightness.dark,
+    primary: tokens.statusHit,
     onPrimary: tokens.bgBase,
-    secondary: tokens.statusArmed,
+    secondary: tokens.statusLive,
     onSecondary: tokens.bgBase,
     error: tokens.statusViolation,
     onError: tokens.bgBase,
@@ -294,20 +296,21 @@ ThemeData buildAtriarchLightTheme() {
 
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.light,
+    brightness: Brightness.dark,
     colorScheme: colorScheme,
     scaffoldBackgroundColor: tokens.bgBase,
     textTheme: textTheme,
     appBarTheme: AppBarTheme(
-      backgroundColor: tokens.bgBase,
-      foregroundColor: tokens.textPrimary,
+      backgroundColor: tokens.bgElevated,
+      foregroundColor: tokens.statusHit,
       elevation: 0,
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
-      titleTextStyle: GoogleFonts.interTight(
+      titleTextStyle: GoogleFonts.spaceGrotesk(
         fontSize: 20,
-        fontWeight: FontWeight.w700,
-        color: tokens.textPrimary,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 3.2,
+        color: tokens.statusHit,
       ),
     ),
     dividerTheme: DividerThemeData(
@@ -319,22 +322,22 @@ ThemeData buildAtriarchLightTheme() {
       color: tokens.bgCard,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AtriarchRadius.md),
-        side: BorderSide(color: tokens.border),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: tokens.textPrimary,
+        backgroundColor: tokens.statusHit,
         foregroundColor: tokens.bgBase,
         minimumSize: const Size(44, 56),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AtriarchRadius.md),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.zero,
         ),
-        textStyle: GoogleFonts.interTight(
+        textStyle: GoogleFonts.spaceGrotesk(
           fontSize: 16,
           fontWeight: FontWeight.w700,
+          letterSpacing: 1.6,
         ),
       ),
     ),
@@ -343,8 +346,8 @@ ThemeData buildAtriarchLightTheme() {
         foregroundColor: tokens.textPrimary,
         side: BorderSide(color: tokens.border),
         minimumSize: const Size(44, 44),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AtriarchRadius.md),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.zero,
         ),
       ),
     ),
@@ -357,29 +360,29 @@ ThemeData buildAtriarchLightTheme() {
     chipTheme: ChipThemeData(
       backgroundColor: tokens.bgCard,
       side: BorderSide(color: tokens.border),
-      labelStyle: GoogleFonts.interTight(
+      labelStyle: GoogleFonts.spaceGrotesk(
         fontSize: 14,
         fontWeight: FontWeight.w500,
         color: tokens.textPrimary,
       ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AtriarchRadius.sm),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: tokens.bgCard,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AtriarchRadius.sm),
+        borderRadius: BorderRadius.zero,
         borderSide: BorderSide(color: tokens.border),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AtriarchRadius.sm),
+        borderRadius: BorderRadius.zero,
         borderSide: BorderSide(color: tokens.border),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AtriarchRadius.sm),
-        borderSide: BorderSide(color: tokens.textPrimary, width: 2),
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: tokens.statusHit, width: 2),
       ),
       contentPadding: const EdgeInsets.symmetric(
         horizontal: AtriarchSpacing.lg,
@@ -387,14 +390,14 @@ ThemeData buildAtriarchLightTheme() {
       ),
     ),
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: tokens.textPrimary,
-      contentTextStyle: GoogleFonts.interTight(
+      backgroundColor: tokens.bgElevated,
+      contentTextStyle: GoogleFonts.spaceGrotesk(
         fontSize: 14,
         fontWeight: FontWeight.w500,
-        color: tokens.bgBase,
+        color: tokens.textPrimary,
       ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AtriarchRadius.md),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
       ),
       behavior: SnackBarBehavior.floating,
     ),
