@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/drill_config.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
+import '../widgets/shooter_chip.dart';
 import '../widgets/tactical/arming_failed_banner.dart';
 import '../widgets/tactical/tactical_card.dart';
 import '../widgets/tactical/tactical_min_max_card.dart';
@@ -12,6 +13,7 @@ import '../widgets/tactical/tactical_section.dart';
 import '../widgets/tactical/tactical_status_chip.dart';
 import '../widgets/tactical/tactical_stepper.dart';
 import 'drill_running_screen.dart';
+import 'shooter_picker_screen.dart';
 
 class ProgramBSetupScreen extends StatefulWidget {
   const ProgramBSetupScreen({super.key});
@@ -134,6 +136,18 @@ class _ProgramBSetupScreenState extends State<ProgramBSetupScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AtriarchSpacing.lg),
         children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: ShooterChip(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ShooterPickerScreen(),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
           _header(context),
           const SizedBox(height: AtriarchSpacing.lg),
           const TacticalSection(

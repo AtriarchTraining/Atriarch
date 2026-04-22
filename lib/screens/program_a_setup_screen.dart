@@ -4,6 +4,7 @@ import '../models/drill_config.dart';
 import '../models/target_group.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
+import '../widgets/shooter_chip.dart';
 import '../widgets/tactical/arming_failed_banner.dart';
 import '../widgets/tactical/group_node_card.dart';
 import '../widgets/tactical/tactical_card.dart';
@@ -15,6 +16,7 @@ import '../widgets/tactical/tactical_status_chip.dart';
 import '../widgets/tactical/tactical_stepper.dart';
 import '../widgets/tactical/target_node_chip.dart';
 import 'drill_running_screen.dart';
+import 'shooter_picker_screen.dart';
 
 class ProgramASetupScreen extends StatefulWidget {
   const ProgramASetupScreen({super.key});
@@ -157,6 +159,18 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AtriarchSpacing.lg),
         children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: ShooterChip(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ShooterPickerScreen(),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
           _header(context),
           const SizedBox(height: AtriarchSpacing.lg),
           const TacticalSection(code: 'PARAM_01', trailing: 'TIMING'),

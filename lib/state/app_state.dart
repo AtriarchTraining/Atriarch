@@ -1,11 +1,17 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import '../services/ble_service.dart';
 import '../services/transmitter_protocol.dart';
 import '../models/target_unit.dart';
 import '../models/drill_config.dart';
 import '../models/drill_session.dart';
 import '../models/session_event.dart';
+import '../models/session_record.dart';
+import '../repositories/session_repository.dart';
+import '../services/config_hasher.dart';
+import '../services/event_batcher.dart';
+import 'shooter_state.dart';
 
 /// Drill phase machine (Gate 1 §1.3 / Addendum §3 UI state sync).
 ///
@@ -49,10 +55,34 @@ class AppState extends ChangeNotifier {
 
   ConnectionStatus _lastStatus = ConnectionStatus.disconnected;
 
-  AppState() {
+  final SessionRepository? _sessions;
+  final ShooterState? _shooterState;
+  EventBatcher? _batcher;
+  String? _activeDbSessionId;
+  int _iterationsCompleted = 0;
+  Future<void>? _pendingClose;
+
+  AppState._internal({
+    SessionRepository? sessions,
+    ShooterState? shooterState,
+  })  : _sessions = sessions,
+        _shooterState = shooterState {
     _dataSub = bleService.incomingData.listen(_handleIncomingData);
     _statusSub = bleService.connectionStatus.listen(_handleConnectionStatus);
   }
+
+  factory AppState({
+    SessionRepository? sessions,
+    ShooterState? shooterState,
+  }) =>
+      AppState._internal(sessions: sessions, shooterState: shooterState);
+
+  @visibleForTesting
+  factory AppState.forTesting({
+    required SessionRepository sessions,
+    required ShooterState shooterState,
+  }) =>
+      AppState._internal(sessions: sessions, shooterState: shooterState);
 
   void _setPhase(DrillPhase next) {
     if (_phase == next) return;
@@ -114,12 +144,12 @@ class AppState extends ChangeNotifier {
     if (decoded is StopAck) {
       _stoppingTimeout?.cancel();
       _stoppingTimeout = null;
-      // Mark the session finished locally (mirrors FIN/ semantics).
       final session = currentSession;
       if (session != null && session.isRunning) {
         session.addEvent(SessionEvent(type: EventType.drillFinished));
       }
       _setPhase(DrillPhase.finished);
+      unawaited(_closeActiveDbSession(finishedNormally: false));
       return;
     }
 
@@ -144,12 +174,12 @@ class AppState extends ChangeNotifier {
         _armingTimeout?.cancel();
         _stoppingTimeout?.cancel();
         _setPhase(DrillPhase.finished);
+        unawaited(_closeActiveDbSession(finishedNormally: false));
       }
       return;
     }
 
     if (decoded is SessionEvent) {
-      // First ACT/ during arming unblocks the START button -> running.
       if (decoded.type == EventType.targetActivated &&
           _phase == DrillPhase.arming) {
         _armingTimeout?.cancel();
@@ -158,10 +188,15 @@ class AppState extends ChangeNotifier {
       }
       if (currentSession != null) {
         currentSession!.addEvent(decoded);
+        _batcher?.add(decoded);
+        if (decoded.type == EventType.targetActivated) {
+          _iterationsCompleted++;
+        }
         if (decoded.type == EventType.drillFinished) {
           _armingTimeout?.cancel();
           _stoppingTimeout?.cancel();
           _setPhase(DrillPhase.finished);
+          unawaited(_closeActiveDbSession(finishedNormally: true));
         }
         notifyListeners();
       }
@@ -204,7 +239,30 @@ class AppState extends ChangeNotifier {
   Future<void> startDrill(DrillConfig config) async {
     currentSession = DrillSession(config: config);
     unreachableTargets.clear();
+    _iterationsCompleted = 0;
     _setPhase(DrillPhase.arming);
+
+    final sessions = _sessions;
+    final shooterState = _shooterState;
+    if (sessions != null && shooterState != null && shooterState.current != null) {
+      final id = const Uuid().v4();
+      _activeDbSessionId = id;
+      final programCode =
+          config.programType == ProgramType.programA ? 'A' : 'B';
+      await sessions.insert(SessionRecord(
+        id: id,
+        shooterId: shooterState.current!.id,
+        programType: programCode,
+        configJson: ConfigHasher.canonicalJson(config),
+        configHash: ConfigHasher.hash(config),
+        startedAt: DateTime.now(),
+        finishedNormally: false,
+        iterationsCompleted: 0,
+      ));
+      _batcher = EventBatcher(
+        onFlush: (events) => sessions.appendEvents(id, events),
+      )..start();
+    }
 
     _armingTimeout?.cancel();
     _armingTimeout = Timer(const Duration(seconds: 3), () {
@@ -213,18 +271,24 @@ class AppState extends ChangeNotifier {
       }
     });
 
-    await bleService.write(TransmitterProtocol.encodeDrillStart(config));
+    try {
+      await bleService.write(TransmitterProtocol.encodeDrillStart(config));
+    } catch (_) {
+      // BLE write failure — the arming timeout above will transition to
+      // armingFailed. Swallow here so the persistence path (already committed
+      // above) is not rolled back and callers don't need to try/catch.
+    }
   }
 
   Future<void> stopDrill() async {
-    // Guard BOTH the state transition AND the wire write. Without this
-    // guard the write fired unconditionally — any caller that invoked
-    // stopDrill() while phase was already stopping/finished/idle would
-    // still blast STOP/ at the transmitter. An upstream bug in some
-    // widget rebuild loop was driving ~6000 STOP/sec which drowned out
-    // the ESP32's drill FSM. Writing only during a real running/arming
-    // → stopping transition keeps the wire honest regardless of caller
-    // rebound.
+    // SAFETY-CRITICAL (e7f926b): guard BOTH the state transition AND the
+    // wire write. Without this guard the write fired unconditionally — any
+    // caller that invoked stopDrill() while phase was already
+    // stopping/finished/idle would still blast STOP/ at the transmitter. An
+    // upstream bug in some widget rebuild loop was driving ~6000 STOP/sec
+    // which drowned out the ESP32's drill FSM. Writing only during a real
+    // running/arming → stopping transition keeps the wire honest regardless
+    // of caller rebound.
     if (_phase != DrillPhase.running && _phase != DrillPhase.arming) {
       return;
     }
@@ -239,6 +303,7 @@ class AppState extends ChangeNotifier {
           session.addEvent(SessionEvent(type: EventType.drillFinished));
         }
         _setPhase(DrillPhase.finished);
+        unawaited(_closeActiveDbSession(finishedNormally: false));
       }
     });
     await bleService.write(TransmitterProtocol.encodeStop());
@@ -255,6 +320,78 @@ class AppState extends ChangeNotifier {
     _armingTimeout?.cancel();
     _stoppingTimeout?.cancel();
     _setPhase(DrillPhase.finished);
+    unawaited(_closeActiveDbSession(finishedNormally: false));
+  }
+
+  Future<void> _closeActiveDbSession({required bool finishedNormally}) async {
+    final id = _activeDbSessionId;
+    final sessions = _sessions;
+    final batcher = _batcher;
+    if (id == null || sessions == null) return;
+    if (batcher != null) {
+      await batcher.stop();
+    }
+    await sessions.closeSession(
+      id: id,
+      endedAt: DateTime.now(),
+      finishedNormally: finishedNormally,
+      iterationsCompleted: _iterationsCompleted,
+    );
+    _activeDbSessionId = null;
+    _batcher = null;
+  }
+
+  @visibleForTesting
+  void handleSessionEventForTesting(SessionEvent event) {
+    if (currentSession != null) {
+      currentSession!.addEvent(event);
+      _batcher?.add(event);
+      if (event.type == EventType.targetActivated) {
+        _iterationsCompleted++;
+      }
+      if (event.type == EventType.drillFinished) {
+        _pendingClose = _closeActiveDbSession(finishedNormally: true);
+      }
+    }
+  }
+
+  @visibleForTesting
+  void handleSnapReplyForTesting({required bool running}) {
+    if (running) {
+      if (_phase == DrillPhase.arming || _phase == DrillPhase.stopping) {
+        _setPhase(DrillPhase.running);
+      }
+      return;
+    }
+    final session = currentSession;
+    if (session != null && session.isRunning) {
+      session.addEvent(SessionEvent(type: EventType.drillFinished));
+    }
+    _armingTimeout?.cancel();
+    _stoppingTimeout?.cancel();
+    _setPhase(DrillPhase.finished);
+    final closeFuture = _closeActiveDbSession(finishedNormally: false);
+    _pendingClose = closeFuture;
+    unawaited(closeFuture);
+  }
+
+  @visibleForTesting
+  Future<void> forceFlushForTesting() async {
+    final id = _activeDbSessionId;
+    final sessions = _sessions;
+    final batcher = _batcher;
+    if (batcher != null) {
+      await batcher.stop();
+      if (id != null && sessions != null && identical(_batcher, batcher)) {
+        _batcher = EventBatcher(
+          onFlush: (events) => sessions.appendEvents(id, events),
+        )..start();
+      }
+    }
+    // Drain any pending close triggered by a FIN event in
+    // handleSessionEventForTesting above. Safe to call even if no close
+    // is pending.
+    await _pendingClose;
   }
 
   @override
