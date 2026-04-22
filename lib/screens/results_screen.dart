@@ -13,6 +13,7 @@ import '../util/target_name_resolver.dart';
 import '../util/widget_to_image.dart';
 import '../widgets/drill_result_image.dart';
 import '../widgets/drill_share_sheet.dart';
+import '../theme/atriarch_theme.dart';
 import 'home_screen.dart';
 
 /// Results view. Renders either the live [DrillSession] held on [AppState]
@@ -27,10 +28,17 @@ class ResultsScreen extends StatelessWidget {
   /// RecentDrillsScreen (#16).
   final bool readOnly;
 
+  /// First-run onboarding wrap-up (Gate 2 #19). When true, renders a
+  /// dismissible banner + a primary "Finish Onboarding" button that
+  /// persists `app_settings.onboarding_complete = true` and pops back to
+  /// Home, replacing the usual Home FAB.
+  final bool onboardingMode;
+
   const ResultsScreen({
     super.key,
     this.viewModel,
     this.readOnly = false,
+    this.onboardingMode = false,
   });
 
   @override
@@ -42,7 +50,11 @@ class ResultsScreen extends StatelessWidget {
         body: const Center(child: Text('No session data.')),
       );
     }
-    return _ResultsView(model: model, readOnly: readOnly);
+    return _ResultsView(
+      model: model,
+      readOnly: readOnly,
+      onboardingMode: onboardingMode,
+    );
   }
 
   static ResultsViewModel? _liveModel(BuildContext context) {
@@ -57,16 +69,31 @@ class ResultsScreen extends StatelessWidget {
   }
 }
 
-class _ResultsView extends StatelessWidget {
+class _ResultsView extends StatefulWidget {
   final ResultsViewModel model;
   final bool readOnly;
+  final bool onboardingMode;
 
-  const _ResultsView({required this.model, required this.readOnly});
+  const _ResultsView({
+    required this.model,
+    required this.readOnly,
+    required this.onboardingMode,
+  });
+
+  @override
+  State<_ResultsView> createState() => _ResultsViewState();
+}
+
+class _ResultsViewState extends State<_ResultsView> {
+  bool _onboardingBannerDismissed = false;
+
+  ResultsViewModel get _model => widget.model;
 
   @override
   Widget build(BuildContext context) {
-    final events = model.events;
-    final resolver = model.nameResolver;
+    final tokens = context.atriarch;
+    final events = _model.events;
+    final resolver = _model.nameResolver;
 
     final activations =
         events.where((e) => e.type == EventType.targetActivated).toList();
@@ -100,6 +127,9 @@ class _ResultsView extends StatelessWidget {
       );
     }
 
+    final showOnboardingBanner =
+        widget.onboardingMode && !_onboardingBannerDismissed;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Drill Results'),
@@ -116,10 +146,18 @@ class _ResultsView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (showOnboardingBanner)
+              _OnboardingBanner(
+                tokens: tokens,
+                onDismiss: () =>
+                    setState(() => _onboardingBannerDismissed = true),
+              ),
+            if (showOnboardingBanner)
+              const SizedBox(height: AtriarchSpacing.md),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _StatCard('Duration', _formatDuration(model.duration)),
+                _StatCard('Duration', _formatDuration(_model.duration)),
                 _StatCard('Activations', '${activations.length}'),
                 _StatCard('Total Hits', '${hits.length}'),
               ],
@@ -179,14 +217,32 @@ class _ResultsView extends StatelessWidget {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-          (route) => false,
-        ),
-        child: const Icon(Icons.home),
-      ),
+      floatingActionButton: widget.onboardingMode
+          ? null
+          : FloatingActionButton(
+              onPressed: () => Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const HomeScreen()),
+                (route) => false,
+              ),
+              child: const Icon(Icons.home),
+            ),
+      bottomNavigationBar: widget.onboardingMode
+          ? _FinishOnboardingBar(
+              onFinish: () => _finishOnboarding(context),
+            )
+          : null,
+    );
+  }
+
+  Future<void> _finishOnboarding(BuildContext context) async {
+    final state = context.read<AppState>();
+    await state.setOnboardingComplete(true);
+    if (!context.mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      (route) => false,
     );
   }
 
@@ -202,17 +258,17 @@ class _ResultsView extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final bytes = await captureWidgetToPng(
-        DrillResultImage(model: model),
+        DrillResultImage(model: _model),
         size: const Size(
           DrillResultImage.width,
           DrillResultImage.height,
         ),
       );
-      final path = await _writeTempPng(bytes, model.drillId);
+      final path = await _writeTempPng(bytes, _model.drillId);
       await Share.shareXFiles(
         [XFile(path, mimeType: 'image/png')],
         subject: 'Atriarch drill result',
-        text: '${model.presetName} · ${_formatDuration(model.duration)}',
+        text: '${_model.presetName} · ${_formatDuration(_model.duration)}',
       );
     } catch (e) {
       debugPrint('shareImage failed: $e');
@@ -233,11 +289,11 @@ class _ResultsView extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     final state = context.read<AppState>();
     try {
-      final path = await state.drillLogs.exportLogToFile(model.drillId);
+      final path = await state.drillLogs.exportLogToFile(_model.drillId);
       await Share.shareXFiles(
         [XFile(path, mimeType: 'application/json')],
         subject: 'Atriarch drill log',
-        text: '${model.presetName} · ${_formatDuration(model.duration)}',
+        text: '${_model.presetName} · ${_formatDuration(_model.duration)}',
       );
     } catch (e) {
       debugPrint('exportJson failed: $e');
@@ -352,6 +408,72 @@ class _EventTile extends StatelessWidget {
       trailing: Text(
         '${event.timestamp.hour}:${event.timestamp.minute.toString().padLeft(2, '0')}:${event.timestamp.second.toString().padLeft(2, '0')}',
         style: const TextStyle(fontSize: 11, color: Colors.grey),
+      ),
+    );
+  }
+}
+
+/// Dismissible banner that renders at the top of Results when the screen is
+/// reached from the first-run wizard (Gate 2 #19).
+class _OnboardingBanner extends StatelessWidget {
+  final AtriarchTokens tokens;
+  final VoidCallback onDismiss;
+
+  const _OnboardingBanner({required this.tokens, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AtriarchSpacing.md),
+      decoration: BoxDecoration(
+        color: tokens.bgElevated,
+        border: Border.all(color: tokens.statusLive),
+        borderRadius: BorderRadius.circular(AtriarchRadius.md),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle, color: tokens.statusLive),
+          const SizedBox(width: AtriarchSpacing.md),
+          Expanded(
+            child: Text(
+              "You're set up! Tap Finish to head home.",
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: tokens.textPrimary,
+                  ),
+            ),
+          ),
+          IconButton(
+            onPressed: onDismiss,
+            icon: const Icon(Icons.close),
+            tooltip: 'Dismiss',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Primary action bar shown in place of the Home FAB when Results is reached
+/// from the first-run wizard.
+class _FinishOnboardingBar extends StatelessWidget {
+  final VoidCallback onFinish;
+
+  const _FinishOnboardingBar({required this.onFinish});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.all(AtriarchSpacing.lg),
+        child: SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: onFinish,
+            child: const Text('Finish Onboarding'),
+          ),
+        ),
       ),
     );
   }

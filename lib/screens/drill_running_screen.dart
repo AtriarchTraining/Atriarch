@@ -14,7 +14,12 @@ import 'results_screen.dart';
 // Addendum §motion: DRILL ACTIVE breathe-pulses 2s opacity 0.75→1.0→0.75.
 
 class DrillRunningScreen extends StatefulWidget {
-  const DrillRunningScreen({super.key});
+  /// When true, the post-drill push replacement will construct a
+  /// [ResultsScreen] with `onboardingMode = true` so the Finish Onboarding
+  /// banner + action show instead of the normal Home FAB (Gate 2 #19).
+  final bool onboardingMode;
+
+  const DrillRunningScreen({super.key, this.onboardingMode = false});
 
   @override
   State<DrillRunningScreen> createState() => _DrillRunningScreenState();
@@ -60,7 +65,11 @@ class _DrillRunningScreenState extends State<DrillRunningScreen>
     if (state.phase == DrillPhase.finished) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const ResultsScreen()),
+        MaterialPageRoute(
+          builder: (_) => ResultsScreen(
+            onboardingMode: widget.onboardingMode,
+          ),
+        ),
       );
     }
   }

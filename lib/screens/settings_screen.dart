@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
 import '../theme/theme_controller.dart';
+import 'onboarding/onboarding_flow.dart';
 
 /// First settings-bearing screen. Designed for later Wave 2 items to stack
 /// additional `_SettingsSection` children into the same ListView.
@@ -18,6 +19,7 @@ class SettingsScreen extends StatelessWidget {
         children: const [
           _ThemeSection(),
           _ReadyAudioSection(),
+          _OnboardingSection(),
         ],
       ),
     );
@@ -124,6 +126,38 @@ class _ReadyAudioSection extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Gate 2 #19. Re-entry point for the first-run wizard. Tapping resets the
+/// `onboarding_complete` flag and pushes the wizard in place of the current
+/// route so the back stack doesn't leak into post-onboarding UI.
+class _OnboardingSection extends StatelessWidget {
+  const _OnboardingSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.atriarch;
+    return _SettingsSection(
+      title: 'Onboarding',
+      child: ListTile(
+        leading: Icon(Icons.replay, color: tokens.textSecondary),
+        title: const Text('Re-run onboarding'),
+        subtitle: Text(
+          'Replay the first-run wizard. Your transmitter pairing will be kept.',
+          style: TextStyle(color: tokens.textTertiary),
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          final state = context.read<AppState>();
+          final navigator = Navigator.of(context);
+          await state.setOnboardingComplete(false);
+          navigator.pushReplacement(
+            MaterialPageRoute(builder: (_) => const OnboardingFlow()),
+          );
+        },
+      ),
     );
   }
 }

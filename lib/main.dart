@@ -10,6 +10,7 @@ import 'state/app_state.dart';
 import 'theme/atriarch_theme.dart';
 import 'theme/theme_controller.dart';
 import 'screens/device_discovery_screen.dart';
+import 'screens/onboarding/onboarding_flow.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +27,11 @@ Future<void> main() async {
   ]);
   // On cold start, begin (or roll over) the current session per §4.E.
   await sessions.beginSessionIfNeeded();
+
+  // Gate 2 #19: first-run onboarding gate. Read the flag synchronously so
+  // the MaterialApp home can branch on it without a loading flicker.
+  final onboardingComplete =
+      await preferences.getSetting<bool>('onboarding_complete') ?? false;
 
   final themeController = ThemeController(preferences: preferences);
   await themeController.init();
@@ -49,13 +55,15 @@ Future<void> main() async {
         ),
         ChangeNotifierProvider<ThemeController>.value(value: themeController),
       ],
-      child: const AtriarchApp(),
+      child: AtriarchApp(onboardingComplete: onboardingComplete),
     ),
   );
 }
 
 class AtriarchApp extends StatelessWidget {
-  const AtriarchApp({super.key});
+  final bool onboardingComplete;
+
+  const AtriarchApp({super.key, required this.onboardingComplete});
 
   @override
   Widget build(BuildContext context) {
@@ -74,16 +82,18 @@ class AtriarchApp extends StatelessWidget {
           themeMode: ctrl.themeMode,
           themeAnimationDuration: duration,
           themeAnimationCurve: Curves.easeInOut,
-          home: StreamBuilder<BluetoothAdapterState>(
-            stream: FlutterBluePlus.adapterState,
-            initialData: BluetoothAdapterState.unknown,
-            builder: (context, snapshot) {
-              if (snapshot.data == BluetoothAdapterState.on) {
-                return const DeviceDiscoveryScreen();
-              }
-              return const BluetoothOffScreen();
-            },
-          ),
+          home: onboardingComplete
+              ? StreamBuilder<BluetoothAdapterState>(
+                  stream: FlutterBluePlus.adapterState,
+                  initialData: BluetoothAdapterState.unknown,
+                  builder: (context, snapshot) {
+                    if (snapshot.data == BluetoothAdapterState.on) {
+                      return const DeviceDiscoveryScreen();
+                    }
+                    return const BluetoothOffScreen();
+                  },
+                )
+              : const OnboardingFlow(),
         );
       },
     );
