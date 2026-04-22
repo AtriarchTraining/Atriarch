@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../data/drill_log_repository.dart';
 import '../data/in_memory_repositories.dart';
 import '../data/preferences_repository.dart';
@@ -14,6 +15,50 @@ import '../models/session_event.dart';
 import '../data/session_summary.dart';
 import '../util/drill_log_codec.dart';
 import '../util/target_name_resolver.dart';
+
+/// Minimal TTS port so tests can drop in a recording fake without pulling
+/// in the real `flutter_tts` plugin (which needs platform channels).
+abstract class TtsPort {
+  Future<void> speak(String text);
+  Future<void> stop();
+}
+
+class _FlutterTtsPort implements TtsPort {
+  _FlutterTtsPort(this._tts);
+  final FlutterTts _tts;
+
+  @override
+  Future<void> speak(String text) async {
+    try {
+      await _tts.speak(text);
+    } catch (e) {
+      // Plugin failures are non-fatal — walk continues silently.
+      debugPrint('TTS.speak failed: $e');
+    }
+  }
+
+  @override
+  Future<void> stop() async {
+    try {
+      await _tts.stop();
+    } catch (_) {
+      // best-effort
+    }
+  }
+}
+
+/// Test fake: records every spoken string without touching the plugin.
+class RecordingTtsPort implements TtsPort {
+  final List<String> spoken = <String>[];
+
+  @override
+  Future<void> speak(String text) async {
+    spoken.add(text);
+  }
+
+  @override
+  Future<void> stop() async {}
+}
 
 /// Drill phase machine (Gate 1 §1.3 / Addendum §3 UI state sync).
 ///
@@ -66,11 +111,29 @@ class AppState extends ChangeNotifier {
   /// Gate 2 #15 ready-audio cue. Non-null; tests inject a [NoopAudioService].
   final AudioService audio;
 
+  /// Gate 2 #20 TTS for Walk-the-Range target naming. Non-null; tests
+  /// inject a [RecordingTtsPort] to assert without a platform channel.
+  final TtsPort tts;
+
   // --------------------------------------------- Ready-audio settings (§4.C)
   static const String _kReadyAudioEnabled = 'ready_audio_enabled';
   static const String _kReadyAudioVolume = 'ready_audio_volume';
   static const bool _defaultReadyAudioEnabled = true;
   static const double _defaultReadyAudioVolume = 0.7;
+
+  // ---------------------------------------------- Onboarding gate (Gate 2 #19)
+  /// Key for the first-run onboarding-complete flag in `app_settings`. The
+  /// wizard at `lib/screens/onboarding/` flips this to `true` after a
+  /// successful practice drill + explicit Finish tap.
+  static const String _kOnboardingComplete = 'onboarding_complete';
+
+  bool _onboardingComplete = false;
+  bool _onboardingHydrated = false;
+
+  /// True once the user has finished the first-run wizard. Source of truth
+  /// is [preferences]; cached here for synchronous UI reads in `main.dart`
+  /// and the Settings screen.
+  bool get onboardingComplete => _onboardingComplete;
 
   bool _readyAudioEnabled = _defaultReadyAudioEnabled;
   double _readyAudioVolume = _defaultReadyAudioVolume;
@@ -130,7 +193,8 @@ class AppState extends ChangeNotifier {
     required this.sessions,
     required this.drillLogs,
     required this.audio,
-  }) {
+    TtsPort? tts,
+  }) : tts = tts ?? _FlutterTtsPort(FlutterTts()) {
     _dataSub = bleService.incomingData.listen(_handleIncomingData);
     _statusSub = bleService.connectionStatus.listen(_handleConnectionStatus);
     // Eagerly hydrate target-name + removed-id snapshots so UI gets the
@@ -138,6 +202,37 @@ class AppState extends ChangeNotifier {
     // repo surfaces empty defaults before init completes.
     unawaited(_hydrateTargetPrefs());
     unawaited(_hydrateReadyAudioPrefs());
+    unawaited(_hydrateOnboarding());
+  }
+
+  Future<void> _hydrateOnboarding() async {
+    try {
+      final v = await preferences.getSetting<bool>(_kOnboardingComplete);
+      // Guard the setter-before-hydrate race. If a user action already
+      // flipped the flag, don't clobber it with a stale read.
+      if (_onboardingHydrated) return;
+      _onboardingComplete = v ?? false;
+      _onboardingHydrated = true;
+      notifyListeners();
+    } catch (_) {
+      // Best-effort; default stays false and the wizard runs.
+    }
+  }
+
+  /// Persist the onboarding-complete flag. Called from:
+  /// - the wizard's final "Finish Onboarding" button (value = true),
+  /// - Settings > "Re-run onboarding" (value = false).
+  Future<void> setOnboardingComplete(bool complete) async {
+    _onboardingHydrated = true;
+    if (_onboardingComplete == complete) {
+      // Still persist to guard against hydrate races where the cached
+      // value briefly matched but persistence is stale.
+      await preferences.setSetting<bool>(_kOnboardingComplete, complete);
+      return;
+    }
+    _onboardingComplete = complete;
+    notifyListeners();
+    await preferences.setSetting<bool>(_kOnboardingComplete, complete);
   }
 
   Future<void> _hydrateTargetPrefs() async {
@@ -188,12 +283,14 @@ class AppState extends ChangeNotifier {
     SessionRepository? sessions,
     DrillLogRepository? drillLogs,
     AudioService? audio,
+    TtsPort? tts,
   }) {
     return AppState(
       preferences: preferences ?? InMemoryPreferencesRepository(),
       sessions: sessions ?? InMemorySessionRepository(),
       drillLogs: drillLogs ?? InMemoryDrillLogRepository(),
       audio: audio ?? NoopAudioService(),
+      tts: tts ?? RecordingTtsPort(),
     );
   }
 
@@ -387,7 +484,171 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> identifyTarget(int targetId) async {
-    await bleService.write(TransmitterProtocol.encodeIdentify(targetId));
+    await _sendIdentify(targetId);
+  }
+
+  // -------------------------------------- Press-and-hold identify (§5.A)
+
+  /// Settings key for the one-shot "hold to flash" coach tooltip. Set to
+  /// true the first time the user triggers a press-and-hold; from then on
+  /// the tip is suppressed.
+  static const String _kIdentifyHoldTipSeen = 'identify_hold_tip_seen';
+
+  /// Press-and-hold repeat cadence (addendum §5.A).
+  static const Duration _identifyHoldCadence = Duration(milliseconds: 700);
+
+  /// Walk-the-Range cadence (addendum §5.B).
+  static const Duration _walkCadence = Duration(seconds: 3);
+
+  /// Per-target repeat timers. Coalesced — one timer per id.
+  final Map<int, Timer> _identifyHoldTimers = <int, Timer>{};
+
+  /// Ids currently being tracked for TX logging / coalescing. Not exposed
+  /// outside the class.
+  final Set<int> _identifyHoldActiveIds = <int>{};
+
+  /// Test seam — counts every IDENT/ the app emitted (press-and-hold or
+  /// Walk-the-Range). Persists across hold starts so tests can assert on
+  /// the total volley fired.
+  final List<int> _debugSentIdentifyIds = <int>[];
+
+  /// Test-only view of the IDENT/ command log.
+  @visibleForTesting
+  List<int> get debugSentIdentifyIds =>
+      List<int>.unmodifiable(_debugSentIdentifyIds);
+
+  /// True once the first-use tip has been shown (cached after hydration).
+  bool _identifyHoldTipSeenCache = false;
+  bool _identifyHoldTipCacheHydrated = false;
+
+  Future<void> _hydrateIdentifyHoldTipSeen() async {
+    try {
+      final seen =
+          await preferences.getSetting<bool>(_kIdentifyHoldTipSeen) ?? false;
+      if (_identifyHoldTipCacheHydrated) return;
+      _identifyHoldTipSeenCache = seen;
+      _identifyHoldTipCacheHydrated = true;
+    } catch (_) {
+      // best-effort
+    }
+  }
+
+  /// Returns true if the UI should display the "hold to flash" SnackBar
+  /// on this press-and-hold (first time per install). Also atomically
+  /// flips the flag so subsequent calls return false.
+  Future<bool> consumeIdentifyHoldTip() async {
+    await _hydrateIdentifyHoldTipSeen();
+    if (_identifyHoldTipSeenCache) return false;
+    _identifyHoldTipSeenCache = true;
+    _identifyHoldTipCacheHydrated = true;
+    try {
+      await preferences.setSetting<bool>(_kIdentifyHoldTipSeen, true);
+    } catch (_) {
+      // best-effort — tip may re-show on next launch if persist failed.
+    }
+    return true;
+  }
+
+  /// Begin press-and-hold identify for [targetId]. Sends an immediate
+  /// IDENT/, then repeats at 700ms cadence until [identifyHoldEnd] is
+  /// called (addendum §5.A). No-op during non-idle drill phases (safety:
+  /// don't flash LEDs during live fire).
+  void identifyHoldStart(int targetId) {
+    if (_phase != DrillPhase.idle) return;
+    // Coalesce repeat calls on the same id.
+    _identifyHoldTimers[targetId]?.cancel();
+    _identifyHoldActiveIds.add(targetId);
+    // Immediate first fire so the user gets instant visual feedback.
+    _fireIdentify(targetId);
+    _identifyHoldTimers[targetId] = Timer.periodic(
+      _identifyHoldCadence,
+      (_) => _fireIdentify(targetId),
+    );
+  }
+
+  /// End press-and-hold identify for [targetId]. Cancels the repeat timer.
+  /// No explicit "stop identify" command is sent — the target's own LED
+  /// timer auto-terminates each 3-flash pulse.
+  void identifyHoldEnd(int targetId) {
+    _identifyHoldTimers.remove(targetId)?.cancel();
+    _identifyHoldActiveIds.remove(targetId);
+  }
+
+  void _fireIdentify(int targetId) {
+    _debugSentIdentifyIds.add(targetId);
+    unawaited(_sendIdentify(targetId));
+  }
+
+  Future<void> _sendIdentify(int targetId) async {
+    try {
+      await bleService.write(TransmitterProtocol.encodeIdentify(targetId));
+    } catch (e) {
+      // BLE may be disconnected mid-hold; the next tick just retries.
+      debugPrint('IDENT/$targetId failed: $e');
+    }
+  }
+
+  // ------------------------------------------------ Walk-the-Range (§5.B)
+
+  bool _walkActive = false;
+
+  /// True while a Walk-the-Range sequence is in flight. UI flips the button
+  /// to "Cancel" when this is true.
+  bool get walkTheRangeActive => _walkActive;
+
+  /// Iterate visible online non-removed targets in ascending id order,
+  /// firing a single IDENT/ for each with a 3s gap between. If TTS is
+  /// available and ready-audio is enabled, announces the resolved name.
+  /// No-op when no walk-able targets exist, or phase is non-idle.
+  Future<void> walkTheRange() async {
+    if (_phase != DrillPhase.idle) return;
+    if (_walkActive) return;
+
+    final walkList = visibleTargets
+        .where((t) => t.isOnline)
+        .toList(growable: false)
+      ..sort((a, b) => a.id.compareTo(b.id));
+    if (walkList.isEmpty) return;
+
+    _walkActive = true;
+    notifyListeners();
+
+    final resolver = targetNameResolver;
+    try {
+      for (var i = 0; i < walkList.length; i++) {
+        if (!_walkActive) break;
+        final t = walkList[i];
+        _fireIdentify(t.id);
+        if (_readyAudioEnabled) {
+          unawaited(tts.speak(resolver.display(t.id)));
+        }
+        // Wait 3s before the next iteration, but bail out at the boundary
+        // if the user cancelled. No partial-wait timer leaks — a cancelled
+        // walk just drops through the for loop.
+        if (i < walkList.length - 1) {
+          await Future<void>.delayed(_walkCadence);
+        }
+      }
+    } finally {
+      _walkActive = false;
+      notifyListeners();
+    }
+  }
+
+  /// Cancel a Walk-the-Range sequence at the next 3s boundary. Safe to
+  /// call when no walk is in flight (no-op).
+  void cancelWalkTheRange() {
+    if (!_walkActive) return;
+    _walkActive = false;
+    unawaited(tts.stop());
+    notifyListeners();
+  }
+
+  /// Test seam. Forces the drill phase without driving the real state
+  /// machine — used to assert identify-hold / walk-the-range safety gates.
+  @visibleForTesting
+  void debugSetPhase(DrillPhase phase) {
+    _setPhase(phase);
   }
 
   /// Reset phase to idle. Call when navigating into a setup screen so a
@@ -590,6 +851,13 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _armingTimeout?.cancel();
     _stoppingTimeout?.cancel();
+    for (final t in _identifyHoldTimers.values) {
+      t.cancel();
+    }
+    _identifyHoldTimers.clear();
+    _identifyHoldActiveIds.clear();
+    _walkActive = false;
+    unawaited(tts.stop());
     _dataSub?.cancel();
     _statusSub?.cancel();
     bleService.dispose();

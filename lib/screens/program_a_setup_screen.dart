@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
@@ -304,6 +306,25 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     _pushLiveConfig();
   }
 
+  /// Press-and-hold start: fire identify + show the one-time coach tip.
+  void _onIdentifyHoldStart(int targetId) {
+    final state = context.read<AppState>();
+    state.identifyHoldStart(targetId);
+    // First-use coach tooltip (addendum §5.A). Fire-and-forget; the
+    // consumeIdentifyHoldTip() setter flips the persisted flag atomically.
+    unawaited(() async {
+      final show = await state.consumeIdentifyHoldTip();
+      if (!mounted || !show) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tip: hold to flash the LED on a target. '
+              'Release to stop.'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }());
+  }
+
   void _openTargetActions(int targetId) {
     final state = context.read<AppState>();
     final target = state.targets.firstWhere(
@@ -345,6 +366,32 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
       appBar: AppBar(
         title: const Text('Program A - Group Mode'),
         actions: [
+          Consumer<AppState>(
+            builder: (_, state, __) {
+              final onlineCount = state.visibleTargets
+                  .where((t) => t.isOnline)
+                  .length;
+              final walkable = onlineCount >= 1 &&
+                  state.phase == DrillPhase.idle;
+              final walking = state.walkTheRangeActive;
+              // Cancel path — only visible during an active walk.
+              if (walking) {
+                return TextButton.icon(
+                  onPressed: () => state.cancelWalkTheRange(),
+                  icon: const Icon(Icons.cancel, color: Colors.white),
+                  label: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                );
+              }
+              return IconButton(
+                icon: const Icon(Icons.gps_fixed),
+                tooltip: 'Walk-the-Range',
+                onPressed: walkable ? () => state.walkTheRange() : null,
+              );
+            },
+          ),
           Consumer<AppState>(
             builder: (_, state, __) {
               return PopupMenuButton<String>(
@@ -431,6 +478,7 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
                     style: TextStyle(color: tokens.textTertiary),
                   );
                 }
+                final holdEnabled = state.phase == DrillPhase.idle;
                 return Wrap(
                   spacing: AtriarchSpacing.sm,
                   runSpacing: AtriarchSpacing.sm,
@@ -439,10 +487,15 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
                             target: t,
                             displayName: resolver.display(t.id),
                             isRemoved: state.isRemoved(t.id),
+                            identifyHoldEnabled: holdEnabled,
                             onTap: state.isRemoved(t.id)
                                 ? () => _openTargetActions(t.id)
                                 : () => _assignTargetToGroup(t.id),
-                            onLongPress: () => _openTargetActions(t.id),
+                            onIdentifyHoldStart: () =>
+                                _onIdentifyHoldStart(t.id),
+                            onIdentifyHoldEnd: () =>
+                                state.identifyHoldEnd(t.id),
+                            onOpenActions: () => _openTargetActions(t.id),
                           ))
                       .toList(),
                 );
