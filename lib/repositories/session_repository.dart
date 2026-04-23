@@ -91,6 +91,49 @@ class SessionRepository {
     return DateTime.fromMillisecondsSinceEpoch(ts as int);
   }
 
+  /// Returns every event for a session, ordered by sequence.
+  Future<List<SessionEvent>> getEventsFor(String sessionId) async {
+    final rows = await _db.query(
+      'session_events',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'sequence ASC',
+    );
+    return rows.map(_rowToEvent).toList();
+  }
+
+  static SessionEvent _rowToEvent(Map<String, Object?> row) => SessionEvent(
+        type: _codeToType(row['type'] as String),
+        targetId: row['target_id'] as int?,
+        hitNumber: row['hit_number'] as int?,
+        requiredHits: row['required_hits'] as int?,
+        totalTimeMs: row['total_time_ms'] as int?,
+        errorDetail: row['error_detail'] as String?,
+        timestamp:
+            DateTime.fromMillisecondsSinceEpoch(row['timestamp'] as int),
+      );
+
+  static EventType _codeToType(String code) {
+    switch (code) {
+      case 'ACT':
+        return EventType.targetActivated;
+      case 'HIT':
+        return EventType.hitDetected;
+      case 'DONE':
+        return EventType.targetComplete;
+      case 'NS':
+        return EventType.noShootViolation;
+      case 'LATE':
+        return EventType.lateHit;
+      case 'FIN':
+        return EventType.drillFinished;
+      case 'ERROR':
+      case 'ERR':
+      default:
+        return EventType.error;
+    }
+  }
+
   static String _typeToCode(EventType t) {
     switch (t) {
       case EventType.targetActivated:
