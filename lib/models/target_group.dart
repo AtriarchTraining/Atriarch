@@ -1,16 +1,6 @@
-import 'package:hive/hive.dart';
-
-part 'target_group.g.dart';
-
-@HiveType(typeId: 2)
-class TargetGroup extends HiveObject {
-  @HiveField(0)
+class TargetGroup {
   final int id;
-
-  @HiveField(1)
   String name;
-
-  @HiveField(2)
   List<int> targetIds;
 
   TargetGroup({
@@ -37,4 +27,10 @@ class TargetGroup extends HiveObject {
       targetIds: List<int>.from(ids),
     );
   }
+
+  /// SQLite row map shim (alias of [toJson]).
+  Map<String, Object?> toMap() => toJson().cast<String, Object?>();
+
+  factory TargetGroup.fromMap(Map<String, Object?> m) =>
+      TargetGroup.fromJson(Map<String, dynamic>.from(m));
 }

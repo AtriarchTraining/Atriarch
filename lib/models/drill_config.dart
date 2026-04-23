@@ -1,55 +1,26 @@
-import 'package:hive/hive.dart';
 import 'target_group.dart';
 
-part 'drill_config.g.dart';
-
-@HiveType(typeId: 0)
 enum ProgramType {
-  @HiveField(0)
   programA,
-  @HiveField(1)
   programB,
 }
 
-@HiveType(typeId: 1)
-class DrillConfig extends HiveObject {
-  @HiveField(0)
+class DrillConfig {
   ProgramType programType;
-
-  @HiveField(1)
   double startMin;
-
-  @HiveField(2)
   double startMax;
-
-  @HiveField(3)
   double delayMin;
-
-  @HiveField(4)
   double delayMax;
-
-  @HiveField(5)
   int hitsMin;
-
-  @HiveField(6)
   int hitsMax;
-
-  @HiveField(7)
   List<TargetGroup> groups;
-
-  @HiveField(8)
   List<int> targetIds;
-
-  @HiveField(9)
   List<int> noShootIds;
-
-  @HiveField(10)
   int iterations;
 
   /// Schema version for this record. Incremented when the shape changes and
-  /// a migration closure in [openTypedBox] needs to run. v1 is the initial
-  /// release; no prior version exists yet.
-  @HiveField(11)
+  /// a migration needs to run. v1 is the initial release; no prior version
+  /// exists yet.
   int version;
 
   DrillConfig({
@@ -90,7 +61,7 @@ class DrillConfig extends HiveObject {
   /// Full equality including groups / targetIds / noShootIds — used to decide
   /// whether a preset is "— modified" relative to a screen's live config.
   ///
-  /// [TargetGroup] lacks its own `==` (it's a mutable HiveObject), so we
+  /// [TargetGroup] lacks its own `==` (it's a mutable class), so we
   /// compare groups by `(id, name, targetIds)` tuples in order.
   bool sameFields(DrillConfig other) {
     if (!sameTimingAndIterations(other)) return false;
@@ -107,11 +78,8 @@ class DrillConfig extends HiveObject {
     return true;
   }
 
-  /// Build a copy with the given overrides. Used to apply preset values into
-  /// a screen-local working config. `groups`, `targetIds`, and `noShootIds`
-  /// are deep-copied so mutating the copy doesn't leak back into the source.
   /// JSON view used by the drill log envelope (#17). Emits only the
-  /// user-facing fields; Hive-internal metadata (version bump semantics)
+  /// user-facing fields; internal metadata (version bump semantics)
   /// stays in [version] so a v2 shape can migrate cleanly.
   Map<String, dynamic> toJson() => <String, dynamic>{
         'programType': programType.name,
@@ -170,6 +138,13 @@ class DrillConfig extends HiveObject {
       version: (json['version'] as num?)?.toInt() ?? 1,
     );
   }
+
+  /// SQLite row serialization — used where toMap/fromMap is expected.
+  /// Emits canonical JSON-parseable Map for config_json column packing.
+  Map<String, Object?> toMap() => toJson().cast<String, Object?>();
+
+  factory DrillConfig.fromMap(Map<String, Object?> m) =>
+      DrillConfig.fromJson(Map<String, dynamic>.from(m));
 
   DrillConfig copyWithFields({
     ProgramType? programType,
