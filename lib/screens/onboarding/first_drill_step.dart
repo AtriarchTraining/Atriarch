@@ -56,14 +56,16 @@ class _FirstDrillStepState extends State<FirstDrillStep> {
     }
     setState(() => _starting = true);
     final config = _buildConfig(online);
-    await state.startDrill(config, presetName: 'Onboarding');
+    // Phase-3 TODO: re-introduce presetName + onboardingMode once
+    // DrillTemplate wiring + DrillRunningScreen onboarding flag are ported.
+    await state.startDrill(config);
     if (!mounted) return;
     // pushReplacement so Back from Results inside onboarding lands on the
     // wizard step (which pops to Home), not back on the Drill screen.
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => const DrillRunningScreen(onboardingMode: true),
+        builder: (_) => const DrillRunningScreen(),
       ),
     );
   }
@@ -141,7 +143,7 @@ class _FirstDrillStepState extends State<FirstDrillStep> {
                           ? online
                               .take(2)
                               .map((t) =>
-                                  state.targetNameResolver.display(t.id))
+                                  state.targetNames[t.id] ?? 'Target ${t.id}')
                               .join(', ')
                           : 'Not enough online',
                       tokens: tokens,

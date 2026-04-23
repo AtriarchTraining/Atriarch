@@ -83,7 +83,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   /// complete even without a practice drill — acceptable per spec because
   /// the user can't run one without hardware and we don't want them stuck.
   Future<void> _finishWithoutDrill() async {
-    await context.read<AppState>().setOnboardingComplete(true);
+    await context.read<AppState>().markOnboardingComplete();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
