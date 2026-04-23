@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/session_event.dart';
@@ -6,6 +7,11 @@ import '../models/session_record.dart';
 class SessionRepository {
   final Database _db;
   SessionRepository(this._db);
+
+  /// Escape hatch for services that need cross-table queries (e.g.
+  /// RangeSessionView). Do NOT use for CRUD that could live on a repository.
+  @visibleForTesting
+  Database get rawDbForRangeView => _db;
 
   Future<void> insert(SessionRecord r) async {
     await _db.insert(
