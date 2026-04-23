@@ -1,8 +1,8 @@
 # Stage 3: Integrate Gate-2 into Tactical + SQLite System-v2
 
-> **Status:** Plan draft — ready for brainstorm/spec pass in a fresh session. Not an executable TDD task list yet.
+> **Status:** Gates locked 2026-04-23 via `superpowers:brainstorming`. Proceeding to `superpowers:writing-plans` for TDD task breakdown.
 
-**Date:** 2026-04-21
+**Date:** 2026-04-21 (plan draft); 2026-04-23 (gates locked)
 **Goal:** Merge `gate-2-work` (10 commits) into `feature/system-v2` (currently post-Stage-2, at `8b8e941`), reconciling gate-2's Hive-backed repositories against plan-1's SQLite, and integrating gate-2's features (onboarding wizard, walk-the-range, presets, session history, drill log, ready-audio, dark-theme toggle, user-named targets) with the tactical UI layer.
 
 **Why this is its own workstream:** Attempted inline during the Gate-1 closeout merge orchestration on 2026-04-21 and aborted. Scope turned out to be 10 files with 34 conflict hunks + 200–400 lines of Hive→SQLite bridge code + semantic reconciliation between two independently-designed subsystems. Not a merge-conflict-resolution task — a focused 3–6 hour engineering task that deserves a plan and its own execution arc.
@@ -180,15 +180,17 @@ Decompose the merge into **5 phases** landed as separate commits so each step is
 - Clear macOS `._*` sidecars
 - Commit `macos/Flutter/GeneratedPluginRegistrant.swift` as a prep commit (it's auto-regenerated but committing it gives a clean working tree for the rest of the work).
 
-### Phase 2: Gate-2 non-UI infrastructure (mechanical merge + rename)
-- Merge gate-2-work but resolve NON-UI conflicts only (app_state.dart data fields, pubspec, theme)
-- Rename gate-2's `SessionRepository` (in `lib/data/`) → `RangeSessionRepository` to avoid clash with plan-1's. Update all call sites.
-- Delete `DrillLogRepository` + its usages (replace with plan-1's event stream).
-- Decide theme-scope (dark-only vs build tactical-light). If dark-only: strip ThemeController's light/auto mode.
-- Delete Hive `.g.dart` files + Hive imports from models that don't need them anymore. `SessionSummary` becomes a plain dataclass.
-- Migrate `DrillPreset` storage from Hive box to plan-1's `drill_templates` SQLite table via a new `DrillTemplateRepository`. Update `PreferencesRepository.savePreset/listPresets/...` to delegate.
+### Phase 2: Gate-2 non-UI infrastructure (mechanical merge + Hive-to-SQLite bridge)
+- Merge `gate-2-work` and resolve NON-UI conflicts only (app_state.dart data fields, pubspec, theme, data layer).
+- **Delete** `lib/data/session_repository.dart` and `lib/data/session_summary.dart` + their Hive adapters. Build a `RangeSessionView` service that queries plan-1's `sessions` table (location TBD in writing-plans phase). Stamp `last_range_activity_at` in shared_preferences.
+- **Delete** `lib/data/drill_log_repository.dart` + `lib/util/drill_log_codec.dart` usages that write. Callers read from `SessionRepository.getEventsFor(sessionId)` (new read-only method on plan-1's repo).
+- **Delete** `lib/data/drill_preset.dart` + `drill_preset.g.dart`. Create `lib/repositories/drill_template_repository.dart` + `lib/models/drill_template.dart`. Move `PreferencesRepository.listPresets/getPreset/savePreset/deletePreset` to the new repository.
+- **Strip** `ThemePreference.light` and `ThemePreference.auto`. Drop `screen_brightness` dep. Remove brightness-override code. Settings screen's theme toggle is removed in Phase 3.
+- **Drop Hive from pubspec:** remove `hive`, `hive_flutter`, `hive_generator`. Keep `build_runner` only if still consumed by another generator.
+- Delete any remaining Hive-generated `.g.dart` files.
+- `SessionSummary` and `DrillPreset` are deleted (not converted) — callers migrate to `sessions` + `DrillTemplate`.
 
-**Exit:** `flutter test` passes (may require fixing gate-2's repository tests against new SQLite bridge); `flutter analyze` clean.
+**Exit:** `flutter test` passes (gate-2's repository tests rewritten against SQLite/fake repos per `feedback_widget_tests_no_ffi_sqflite.md`); `flutter analyze` clean; all 6 safety-critical signatures intact.
 
 ### Phase 3: Screen conflicts resolved (tactical retrofit)
 - Resolve `home_screen`, `program_a/b_setup_screen`, `drill_running_screen`, `results_screen` conflicts. Preserve tactical layout; wire gate-2 features (PresetRow, TargetActionsSheet, ShareSheet) into the tactical language.
@@ -213,16 +215,45 @@ Decompose the merge into **5 phases** landed as separate commits so each step is
 
 ---
 
-## Known Risks / Open Questions (for brainstorm session)
+## Decisions (locked 2026-04-23)
 
-1. **Light theme: build or cut?** Dark-only is cheaper but loses a gate-2 feature. Full tactical-light is a separate UI sprint.
-2. **Range-session persistence: SQLite table or in-memory only?** Gate-2 clears after 8h anyway. In-memory is cheaper and avoids schema churn but loses app-restart survival (minor UX loss).
-3. **DrillTemplate vs DrillPreset: merge models or keep both?** Gate-2 has `DrillPreset`, plan-1's schema has `drill_templates`. They represent the same concept. Recommend: single `DrillPreset` class, SQLite-backed via `drill_templates` table.
-4. **Onboarding wizard styling:** gate-2 built it pre-tactical. Retrofit effort is ~5 step files × ~30 min each. Acceptable.
-5. **Walk-the-Range TTS plugin:** `flutter_tts` pub dep needs to come in via gate-2's pubspec merge. Verify it builds on iOS 26. (Possible plugin init deadlock if it needs platform-channel init before `runApp`; `main.dart` already calls `WidgetsFlutterBinding.ensureInitialized()` which should be sufficient.)
-6. **Ready-audio asset:** `assets/sounds/ready.mp3` gets added via the merge. Confirm `pubspec.yaml` asset section includes it.
-7. **Hive artifact cleanup:** Once Hive is removed, `pubspec.yaml` loses `hive`, `hive_flutter`, `hive_generator`, `build_runner` (if used solely for Hive). Don't miss these or builds will drag unused heavyweight deps.
-8. **Gate-2's pre-existing session-history tests:** if they were written against Hive's synchronous-ish behavior, some async-timing adjustments may be needed against SQLite's explicit `await`.
+The three gate questions below were resolved via `superpowers:brainstorming`. The remaining five items stay as implementation-level risks handled inside the TDD plan.
+
+### 1. Theme — DARK-ONLY (memory: `project_theme_dark_only.md`)
+
+Ship dark-only. Strip `ThemePreference.light` and `ThemePreference.auto` from gate-2's `ThemeController`; remove `screen_brightness` from `pubspec.yaml`; delete the brightness-override code. Settings screen loses its theme-mode radio.
+
+The "outdoor rule" brightness boost is deferred to a standalone screen-lifecycle hook in a future UI task — it does not require a light theme to work, and the tactical dark palette (neon green on near-black) is at least as daylight-legible as most light themes on glossy tablet screens. Building `buildAtriarchLightTheme()` would be a 4–6h UI sprint out of scope for this integration.
+
+### 2. Range-session — DERIVED VIEW, NO NEW STORAGE (memory: `project_range_session_derived.md`)
+
+**Delete** `lib/data/session_repository.dart` and `lib/data/session_summary.dart` outright. Gate-2's "range session" concept is implemented as a query over plan-1's existing `sessions` table:
+
+- New `RangeSessionView` service (location TBD in writing-plans phase) exposes `watchCurrentRangeSession()` — returns `sessions` rows since the current cutoff, ordered `started_at DESC`.
+- Cutoff lives in shared_preferences as `last_range_activity_at` (ISO8601). Service stamps it on drill start/end.
+- 8h gap detection: if `now - last_range_activity_at >= 8h`, the visible cutoff moves to now — effectively clearing the list without deleting any rows. `clearSession()` becomes "set cutoff to now".
+- Fields `SessionSummary` previously provided (`completions`, `violations`, `lateHits`, `duration`) come from `sessions` + `session_metrics` (or computed on-the-fly from `session_events` until Plan-2's metrics writer lands).
+- Add `SessionRepository.getEventsFor(sessionId)` so drill-share + drill-result-image can read the event stream instead of the deleted `DrillLogRepository`.
+
+### 3. DrillPreset / drill_templates — ONE CLASS, SQLITE-BACKED (memory: `project_drill_template_consolidation.md`)
+
+Merge gate-2's `DrillPreset` into plan-1's `drill_templates` schema. Code-side class renames to `DrillTemplate`; user-facing UI strings stay "preset".
+
+- New `lib/repositories/drill_template_repository.dart` with CRUD over the existing `drill_templates` table.
+- Model fields: `id: String`, `shooterId: String?` (null = app-wide), `name: String`, `programType: ProgramType`, `config: DrillConfig` (deserialized from `config_json`), `configHash: String` (computed via existing `ConfigHasher`), `createdAt: DateTime`.
+- `updated_at` and `version` columns NOT added — YAGNI, reopen only when a migration needs them.
+- Delete `lib/data/drill_preset.dart` + `drill_preset.g.dart`. Remove the `drill_presets` Hive box.
+- `PreferencesRepository.listPresets/getPreset/savePreset/deletePreset` → move to the new repository. `PreferencesRepository` keeps only shared_preferences concerns.
+- Default preset id stays **app-wide** in shared_preferences (per-shooter default is a future Instructor-SKU feature).
+- Gate-2's save flow passes `shooter_id = null`.
+
+### Implementation-level risks (handled in TDD plan, not gate decisions)
+
+- **Onboarding wizard styling:** gate-2 built pre-tactical. Retrofit effort ~5 step files × 30 min each.
+- **Walk-the-Range TTS:** `flutter_tts` pub dep comes in via gate-2's pubspec merge. Verify it builds on iOS 26. (Possible plugin-init deadlock if it needs platform-channel init before `runApp`; `main.dart` already calls `WidgetsFlutterBinding.ensureInitialized()`.)
+- **Ready-audio asset:** `assets/sounds/ready.mp3` added via merge. Confirm `pubspec.yaml` asset section includes it.
+- **Hive artifact cleanup:** once Hive is removed, `pubspec.yaml` loses `hive`, `hive_flutter`, `hive_generator`, `build_runner` (if Hive was the sole consumer).
+- **Session-history tests:** if they were written against Hive's synchronous-ish behavior, async-timing adjustments may be needed against SQLite's explicit `await`. Likely rewritten on top of fake repos anyway per `feedback_widget_tests_no_ffi_sqflite.md`.
 
 ---
 
