@@ -1,16 +1,22 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
-import '../services/ble_service.dart';
-import '../services/transmitter_protocol.dart';
-import '../models/target_unit.dart';
+
 import '../models/drill_config.dart';
 import '../models/drill_session.dart';
 import '../models/session_event.dart';
 import '../models/session_record.dart';
+import '../models/target_unit.dart';
+import '../repositories/drill_template_repository.dart';
 import '../repositories/session_repository.dart';
+import '../services/audio_service.dart';
+import '../services/ble_service.dart';
 import '../services/config_hasher.dart';
 import '../services/event_batcher.dart';
+import '../services/preferences_repository.dart';
+import '../services/range_session_view.dart';
+import '../services/transmitter_protocol.dart';
+import '../services/tts_port.dart';
 import 'shooter_state.dart';
 
 /// Drill phase machine (Gate 1 §1.3 / Addendum §3 UI state sync).
@@ -34,17 +40,38 @@ enum DrillPhase {
 class AppState extends ChangeNotifier {
   final BleService bleService = BleService();
 
+  // --- Domain state (plan-1) ---
   List<TargetUnit> targets = [];
   bool isScanning = false;
-
   DrillSession? currentSession;
-
-  DrillPhase _phase = DrillPhase.idle;
-  DrillPhase get phase => _phase;
 
   /// Targets that dropped out mid-drill (transmitter EVT_ACK timeout ->
   /// ERR/unreachable/<id>/). Cleared on each new drill start.
   final Set<int> unreachableTargets = {};
+
+  // --- Gate-2 additions ---
+  final PreferencesRepository? preferences;
+  final AudioService? audio;
+  final TtsPort? tts;
+  final RangeSessionView? rangeSessionView;
+  final DrillTemplateRepository? drillTemplates;
+
+  Map<int, String> _targetNames = <int, String>{};
+  Set<int> _removedTargetIds = <int>{};
+  bool _showRemoved = false;
+  bool _onboardingComplete = false;
+  bool _readyChimePlayedForCurrentCycle = false;
+  // ignore: unused_field
+  bool _discoveryDoneSeenForCurrentCycle = false;
+
+  Map<int, String> get targetNames => Map.unmodifiable(_targetNames);
+  Set<int> get removedTargetIds => Set.unmodifiable(_removedTargetIds);
+  bool get showRemoved => _showRemoved;
+  bool get onboardingComplete => _onboardingComplete;
+
+  // --- Phase machine + telemetry (plan-1) ---
+  DrillPhase _phase = DrillPhase.idle;
+  DrillPhase get phase => _phase;
 
   StreamSubscription<String>? _dataSub;
   StreamSubscription<ConnectionStatus>? _statusSub;
@@ -65,6 +92,11 @@ class AppState extends ChangeNotifier {
   AppState._internal({
     SessionRepository? sessions,
     ShooterState? shooterState,
+    this.preferences,
+    this.audio,
+    this.tts,
+    this.rangeSessionView,
+    this.drillTemplates,
   })  : _sessions = sessions,
         _shooterState = shooterState {
     _dataSub = bleService.incomingData.listen(_handleIncomingData);
@@ -74,16 +106,88 @@ class AppState extends ChangeNotifier {
   factory AppState({
     SessionRepository? sessions,
     ShooterState? shooterState,
+    PreferencesRepository? preferences,
+    AudioService? audio,
+    TtsPort? tts,
+    RangeSessionView? rangeSessionView,
+    DrillTemplateRepository? drillTemplates,
   }) =>
-      AppState._internal(sessions: sessions, shooterState: shooterState);
+      AppState._internal(
+        sessions: sessions,
+        shooterState: shooterState,
+        preferences: preferences,
+        audio: audio,
+        tts: tts,
+        rangeSessionView: rangeSessionView,
+        drillTemplates: drillTemplates,
+      );
 
   @visibleForTesting
   factory AppState.forTesting({
     required SessionRepository sessions,
     required ShooterState shooterState,
+    PreferencesRepository? preferences,
+    AudioService? audio,
+    TtsPort? tts,
+    RangeSessionView? rangeSessionView,
+    DrillTemplateRepository? drillTemplates,
   }) =>
-      AppState._internal(sessions: sessions, shooterState: shooterState);
+      AppState._internal(
+        sessions: sessions,
+        shooterState: shooterState,
+        preferences: preferences,
+        audio: audio,
+        tts: tts,
+        rangeSessionView: rangeSessionView,
+        drillTemplates: drillTemplates,
+      );
 
+  // --- Hydrate gate-2 prefs on startup ---
+  Future<void> hydratePreferences() async {
+    final prefs = preferences;
+    if (prefs == null) return;
+    _targetNames = await prefs.getTargetNames();
+    _removedTargetIds = await prefs.getRemovedTargetIds();
+    _onboardingComplete = await prefs.isOnboardingComplete();
+    notifyListeners();
+  }
+
+  // --- Target-name + removed-target API (gate-2) ---
+  Future<void> setTargetName(int id, String? name) async {
+    await preferences?.setTargetName(id, name);
+    if (name == null || name.isEmpty) {
+      _targetNames.remove(id);
+    } else {
+      _targetNames[id] = name;
+    }
+    notifyListeners();
+  }
+
+  Future<void> markTargetRemoved(int id) async {
+    _removedTargetIds.add(id);
+    await preferences?.setRemovedTargetIds(_removedTargetIds);
+    notifyListeners();
+  }
+
+  Future<void> unmarkTargetRemoved(int id) async {
+    _removedTargetIds.remove(id);
+    await preferences?.setRemovedTargetIds(_removedTargetIds);
+    notifyListeners();
+  }
+
+  void toggleShowRemoved() {
+    _showRemoved = !_showRemoved;
+    notifyListeners();
+  }
+
+  // --- Onboarding (gate-2) ---
+  Future<void> markOnboardingComplete() async {
+    _onboardingComplete = true;
+    await preferences?.setOnboardingComplete(true);
+    notifyListeners();
+  }
+
+  // --- Phase machine internals (plan-1 — untouched) ---
   void _setPhase(DrillPhase next) {
     if (_phase == next) return;
     _phase = next;
@@ -94,9 +198,6 @@ class AppState extends ChangeNotifier {
     final prev = _lastStatus;
     _lastStatus = status;
 
-    // Reconcile on reconnect: if we were previously reconnecting and a drill
-    // session is live, ask the transmitter for a snapshot. The SnapReply
-    // handler below will flip phase based on `running`.
     final wasReconnecting = prev == ConnectionStatus.reconnecting;
     final isNowConnected = status == ConnectionStatus.connected;
     final drillLive = _phase == DrillPhase.arming ||
@@ -104,7 +205,6 @@ class AppState extends ChangeNotifier {
         _phase == DrillPhase.stopping;
 
     if (wasReconnecting && isNowConnected && drillLive) {
-      // Fire-and-forget; errors are surfaced via other channels.
       // Note: BleService also sends SNAP/ itself on reconnect; this is a
       // belt-and-suspenders safeguard in case BleService's auto-SNAP fails.
       unawaited(_sendSnap());
@@ -137,6 +237,12 @@ class AppState extends ChangeNotifier {
       _scanTimeout?.cancel();
       _scanTimeout = null;
       isScanning = false;
+      _discoveryDoneSeenForCurrentCycle = true;
+      // Gate-2 #15: play the "ready" chime once per discovery cycle.
+      if (!_readyChimePlayedForCurrentCycle) {
+        _readyChimePlayedForCurrentCycle = true;
+        unawaited(audio?.playReady(volume: 1.0));
+      }
       notifyListeners();
       return;
     }
@@ -205,6 +311,8 @@ class AppState extends ChangeNotifier {
 
   Future<void> discoverTargets() async {
     isScanning = true;
+    _readyChimePlayedForCurrentCycle = false;
+    _discoveryDoneSeenForCurrentCycle = false;
     for (final t in targets) {
       t.isOnline = false;
     }
@@ -241,6 +349,9 @@ class AppState extends ChangeNotifier {
     unreachableTargets.clear();
     _iterationsCompleted = 0;
     _setPhase(DrillPhase.arming);
+
+    // Gate-2: stamp range-session activity on drill start.
+    unawaited(rangeSessionView?.markActivity());
 
     final sessions = _sessions;
     final shooterState = _shooterState;
@@ -324,6 +435,8 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _closeActiveDbSession({required bool finishedNormally}) async {
+    // Gate-2: stamp range-session activity on drill end as well.
+    unawaited(rangeSessionView?.markActivity());
     final id = _activeDbSessionId;
     final sessions = _sessions;
     final batcher = _batcher;
