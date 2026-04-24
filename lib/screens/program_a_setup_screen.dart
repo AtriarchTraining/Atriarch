@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
+
 import '../models/drill_config.dart';
+import '../models/drill_template.dart';
 import '../models/target_group.dart';
+import '../models/target_unit.dart';
+import '../services/config_hasher.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
+import '../util/target_name_resolver.dart';
+import '../widgets/preset_row.dart';
 import '../widgets/shooter_chip.dart';
 import '../widgets/tactical/arming_failed_banner.dart';
 import '../widgets/tactical/group_node_card.dart';
@@ -15,6 +22,7 @@ import '../widgets/tactical/tactical_section.dart';
 import '../widgets/tactical/tactical_status_chip.dart';
 import '../widgets/tactical/tactical_stepper.dart';
 import '../widgets/tactical/target_node_chip.dart';
+import '../widgets/target_actions_sheet.dart';
 import 'drill_running_screen.dart';
 import 'shooter_picker_screen.dart';
 
@@ -141,6 +149,128 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     });
   }
 
+  DrillConfig _currentConfigSnapshot() {
+    final state = context.read<AppState>();
+    final noShootIds = state.targets
+        .where((t) => t.isOnline && t.isNoShoot)
+        .map((t) => t.id)
+        .toList();
+    return DrillConfig(
+      programType: ProgramType.programA,
+      startMin: double.tryParse(startMinCtrl.text) ?? 1.0,
+      startMax: double.tryParse(startMaxCtrl.text) ?? 3.0,
+      delayMin: double.tryParse(delayMinCtrl.text) ?? 0.5,
+      delayMax: double.tryParse(delayMaxCtrl.text) ?? 2.0,
+      hitsMin: int.tryParse(hitsMinCtrl.text) ?? 1,
+      hitsMax: int.tryParse(hitsMaxCtrl.text) ?? 3,
+      groups: groups,
+      noShootIds: noShootIds,
+      iterations: int.tryParse(iterCtrl.text) ?? 5,
+    );
+  }
+
+  void _applyPreset(DrillTemplate template) {
+    final cfg = template.config;
+    setState(() {
+      startMinCtrl.text = cfg.startMin.toStringAsFixed(2);
+      startMaxCtrl.text = cfg.startMax.toStringAsFixed(2);
+      delayMinCtrl.text = cfg.delayMin.toStringAsFixed(2);
+      delayMaxCtrl.text = cfg.delayMax.toStringAsFixed(2);
+      hitsMinCtrl.text = cfg.hitsMin.toString();
+      hitsMaxCtrl.text = cfg.hitsMax.toString();
+      iterCtrl.text = cfg.iterations.toString();
+      // Load group allocation if present.
+      if (cfg.groups.isNotEmpty) {
+        final loaded = <TargetGroup>[];
+        for (var i = 0; i < 5; i++) {
+          final src = i < cfg.groups.length ? cfg.groups[i] : null;
+          loaded.add(
+            TargetGroup(
+              id: i + 1,
+              targetIds: src != null ? List<int>.from(src.targetIds) : <int>[],
+            ),
+          );
+        }
+        groups = loaded;
+      }
+    });
+  }
+
+  Future<void> _promptSavePresetName() async {
+    final state = context.read<AppState>();
+    final repo = state.drillTemplates;
+    if (repo == null) return;
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          title: const Text('Save preset'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 40,
+            decoration: const InputDecoration(
+              labelText: 'Preset name',
+              counterText: '',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(
+                controller.text.trim(),
+              ),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+    if (name == null || name.isEmpty) return;
+    final config = _currentConfigSnapshot();
+    final template = DrillTemplate(
+      id: const Uuid().v4(),
+      shooterId: null, // app-wide preset (gate-2 save flow)
+      name: name,
+      programType: ProgramType.programA,
+      config: config,
+      configHash: ConfigHasher.hash(config),
+      createdAt: DateTime.now(),
+    );
+    await repo.insert(template);
+    if (mounted) setState(() {});
+  }
+
+  void _openTargetActions(BuildContext context, int targetId) {
+    final state = context.read<AppState>();
+    final target = state.targets.firstWhere(
+      (t) => t.id == targetId,
+      orElse: () => TargetUnit(id: targetId, isOnline: false),
+    );
+    final resolver = TargetNameResolver(state.targetNames);
+    final isRemoved = state.removedTargetIds.contains(targetId);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => TargetActionsSheet(
+        target: target,
+        resolver: resolver,
+        isRemoved: isRemoved,
+        onIdentify: () => state.identifyTarget(targetId),
+        onRenameSaved: (name) => state.setTargetName(targetId, name),
+        onToggleNoShoot: () => setState(() {
+          target.isNoShoot = !target.isNoShoot;
+        }),
+        onRemoveConfirmed: () => state.markTargetRemoved(targetId),
+        onRestoreConfirmed: () => state.unmarkTargetRemoved(targetId),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.atriarch;
@@ -172,6 +302,19 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
           ),
           const SizedBox(height: AtriarchSpacing.sm),
           _header(context),
+          const SizedBox(height: AtriarchSpacing.md),
+          Consumer<AppState>(
+            builder: (_, state, __) {
+              final repo = state.drillTemplates;
+              if (repo == null) return const SizedBox.shrink();
+              return PresetRow(
+                drillTemplates: repo,
+                currentConfig: _currentConfigSnapshot,
+                onLoad: _applyPreset,
+                onSave: _promptSavePresetName,
+              );
+            },
+          ),
           const SizedBox(height: AtriarchSpacing.lg),
           const TacticalSection(code: 'PARAM_01', trailing: 'TIMING'),
           const SizedBox(height: AtriarchSpacing.sm),
@@ -238,12 +381,21 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
             childAspectRatio: 1.6,
             children: List.generate(
               5,
-              (i) => GroupNodeCard(
-                groupIndex: i,
-                targetIds: groups[i].targetIds,
-                selected: selectedGroupIndex == i,
-                onTap: () => setState(() => selectedGroupIndex = i),
-                onRemoveTarget: (id) => _removeTargetFromGroup(i, id),
+              (i) => GestureDetector(
+                onLongPress: () {
+                  if (groups[i].targetIds.isEmpty) return;
+                  _openTargetActions(
+                    context,
+                    groups[i].targetIds.first,
+                  );
+                },
+                child: GroupNodeCard(
+                  groupIndex: i,
+                  targetIds: groups[i].targetIds,
+                  selected: selectedGroupIndex == i,
+                  onTap: () => setState(() => selectedGroupIndex = i),
+                  onRemoveTarget: (id) => _removeTargetFromGroup(i, id),
+                ),
               ),
             ),
           ),
@@ -270,9 +422,13 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
                 runSpacing: AtriarchSpacing.sm,
                 children: unassigned
                     .map(
-                      (t) => TargetNodeChip(
-                        target: t,
-                        onTap: () => _assignTargetToGroup(t.id),
+                      (t) => GestureDetector(
+                        onLongPress: () =>
+                            _openTargetActions(context, t.id),
+                        child: TargetNodeChip(
+                          target: t,
+                          onTap: () => _assignTargetToGroup(t.id),
+                        ),
                       ),
                     )
                     .toList(),
