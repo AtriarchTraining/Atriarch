@@ -2,13 +2,16 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/computed_metrics.dart';
 import '../models/drill_config.dart';
 import '../models/drill_session.dart';
 import '../models/session_event.dart';
 import '../models/session_record.dart';
 import '../models/target_unit.dart';
 import '../repositories/drill_template_repository.dart';
+import '../repositories/metrics_repository.dart';
 import '../repositories/session_repository.dart';
+import '../services/metrics_engine.dart';
 import '../services/audio_service.dart';
 import '../services/ble_service.dart';
 import '../services/config_hasher.dart';
@@ -88,6 +91,8 @@ class AppState extends ChangeNotifier {
 
   final SessionRepository? _sessions;
   final ShooterState? _shooterState;
+  final MetricsRepository? _metricsRepo;
+  ComputedMetrics? currentMetrics;
   EventBatcher? _batcher;
   String? _activeDbSessionId;
   int _iterationsCompleted = 0;
@@ -105,13 +110,15 @@ class AppState extends ChangeNotifier {
   AppState._internal({
     SessionRepository? sessions,
     ShooterState? shooterState,
+    MetricsRepository? metricsRepo,
     this.preferences,
     this.audio,
     this.tts,
     this.rangeSessionView,
     this.drillTemplates,
   })  : _sessions = sessions,
-        _shooterState = shooterState {
+        _shooterState = shooterState,
+        _metricsRepo = metricsRepo {
     _dataSub = bleService.incomingData.listen(_handleIncomingData);
     _statusSub = bleService.connectionStatus.listen(_handleConnectionStatus);
   }
@@ -119,6 +126,7 @@ class AppState extends ChangeNotifier {
   factory AppState({
     SessionRepository? sessions,
     ShooterState? shooterState,
+    MetricsRepository? metricsRepo,
     PreferencesRepository? preferences,
     AudioService? audio,
     TtsPort? tts,
@@ -128,6 +136,7 @@ class AppState extends ChangeNotifier {
       AppState._internal(
         sessions: sessions,
         shooterState: shooterState,
+        metricsRepo: metricsRepo,
         preferences: preferences,
         audio: audio,
         tts: tts,
@@ -139,6 +148,7 @@ class AppState extends ChangeNotifier {
   factory AppState.forTesting({
     required SessionRepository sessions,
     required ShooterState shooterState,
+    MetricsRepository? metricsRepo,
     PreferencesRepository? preferences,
     AudioService? audio,
     TtsPort? tts,
@@ -148,12 +158,19 @@ class AppState extends ChangeNotifier {
       AppState._internal(
         sessions: sessions,
         shooterState: shooterState,
+        metricsRepo: metricsRepo,
         preferences: preferences,
         audio: audio,
         tts: tts,
         rangeSessionView: rangeSessionView,
         drillTemplates: drillTemplates,
       );
+
+  @visibleForTesting
+  void setCurrentMetricsForTesting(ComputedMetrics? m) {
+    currentMetrics = m;
+    notifyListeners();
+  }
 
   // --- Hydrate gate-2 prefs on startup ---
   Future<void> hydratePreferences() async {
@@ -495,6 +512,14 @@ class AppState extends ChangeNotifier {
       finishedNormally: finishedNormally,
       iterationsCompleted: _iterationsCompleted,
     );
+    final metricsRepo = _metricsRepo;
+    if (metricsRepo != null) {
+      final events = await sessions.getEventsFor(id);
+      final computed = MetricsEngine.compute(id, events);
+      currentMetrics = computed;
+      await metricsRepo.save(computed);
+      notifyListeners();
+    }
     _activeDbSessionId = null;
     _batcher = null;
   }
