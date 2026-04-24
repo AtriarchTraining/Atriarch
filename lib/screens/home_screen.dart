@@ -1,21 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:provider/provider.dart';
+
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
+import '../util/target_name_resolver.dart';
 import '../widgets/tactical/tactical_card.dart';
+import '../widgets/tactical/tactical_primary_button.dart';
 import '../widgets/tactical/tactical_scaffold.dart';
 import '../widgets/tactical/tactical_section.dart';
 import '../widgets/tactical/tactical_status_chip.dart';
 import 'device_discovery_screen.dart';
+import 'onboarding/onboarding_flow.dart';
 import 'program_a_setup_screen.dart';
 import 'program_b_setup_screen.dart';
+import 'recent_drills_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Gate the home layout on onboarding completion: first launch should
+    // land on the wizard, not the dashboard.
+    final state = context.watch<AppState>();
+    if (!state.onboardingComplete) {
+      return const OnboardingFlow();
+    }
     return TacticalScaffold(
       title: 'ATRIARCH // HOME',
       body: ListView(
@@ -63,9 +75,43 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: AtriarchSpacing.xl),
+          const TacticalSection(code: 'NAV_00', trailing: 'UTILITIES'),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalPrimaryButton(
+            label: 'RECENT_DRILLS',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RecentDrillsScreen()),
+            ),
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalPrimaryButton(
+            label: 'SETTINGS',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalPrimaryButton(
+            label: 'WALK_THE_RANGE',
+            onPressed: () => _startWalkTheRange(context),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _startWalkTheRange(BuildContext context) async {
+    final state = context.read<AppState>();
+    final resolver = TargetNameResolver(state.targetNames);
+    for (final target in state.targets.where((t) => t.isOnline)) {
+      final name = resolver.display(target.id);
+      await state.tts?.speak(name);
+      await state.identifyTarget(target.id);
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
   }
 }
 

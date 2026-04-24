@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
+import '../models/drill_session.dart';
 import '../models/session_event.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
+import '../util/drill_log_codec.dart';
+import '../widgets/drill_share_sheet.dart';
 import '../widgets/tactical/tactical_card.dart';
 import '../widgets/tactical/tactical_hud_tile.dart';
 import '../widgets/tactical/tactical_primary_button.dart';
@@ -127,6 +132,12 @@ class ResultsScreen extends StatelessWidget {
           ...events.map((e) => _EventRow(event: e)),
           const SizedBox(height: AtriarchSpacing.xl),
           TacticalPrimaryButton(
+            label: 'share',
+            icon: Icons.ios_share,
+            onPressed: () => _openShareSheet(context, session),
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalPrimaryButton(
             label: 'new drill',
             icon: Icons.refresh,
             onPressed: () => Navigator.pushReplacement(
@@ -137,6 +148,35 @@ class ResultsScreen extends StatelessWidget {
           const SizedBox(height: AtriarchSpacing.xxl),
         ],
       ),
+    );
+  }
+
+  Future<void> _openShareSheet(BuildContext context, DrillSession session) async {
+    final state = context.read<AppState>();
+    final targetNames = state.targetNames;
+    await DrillShareSheet.show(
+      context,
+      onShareImage: () {
+        // Result-image capture-to-bytes flow will land with Phase 4 hardware
+        // integration. For now surface a placeholder so the button is visibly
+        // wired.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Share image — capture flow lands in Phase 4.'),
+          ),
+        );
+      },
+      onExportJson: () async {
+        final jsonBlob = DrillLogCodec.encode(
+          session,
+          targetNames: targetNames,
+        );
+        await Clipboard.setData(ClipboardData(text: jsonBlob));
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Drill log JSON copied to clipboard.')),
+        );
+      },
     );
   }
 
