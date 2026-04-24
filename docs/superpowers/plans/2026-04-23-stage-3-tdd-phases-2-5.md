@@ -2411,6 +2411,19 @@ Goal: every screen from gate-2 compiles on the merged tree AND wears tactical vi
 
 For each screen task: read the gate-2 version at `.worktrees/gate-2/lib/screens/<file>.dart` for feature semantics, then apply tactical styling using the widget library at `lib/widgets/tactical/`.
 
+### **Execution order (widgets before screens that consume them)**
+
+The task numbering below is by file-group, NOT by dependency. The correct execution order is:
+
+1. **Tactical widgets first** (Tasks 3.9 → 3.10 → 3.11 → 3.12): `preset_row`, `target_actions_sheet`, `drill_share_sheet`, `drill_result_image`. These are consumed by the screens.
+2. **Screens that consume those widgets** (Tasks 3.1 → 3.2 → 3.3 → 3.4 → 3.5): `home_screen`, `program_a_setup`, `program_b_setup`, `drill_running` (verify-only), `results_screen`.
+3. **Stub-to-tactical rewrites of standalone screens** (Tasks 3.6 → 3.7 → 3.8): `settings_screen`, `recent_drills_screen`, onboarding 5 files.
+4. **Phase 3 exit** (Task 3.13).
+
+Rationale: Tasks 3.2/3.3 import `PresetRow` + `TargetActionsSheet`. Task 3.5 imports `DrillShareSheet`. Those widgets exist only as Phase-2 stubs at Phase-3 start — tactically rebuild them before screens integrate them. If you do screens first, you'll commit screens that wire against stubs, then have to re-edit the screens when the real widgets land.
+
+---
+
 ### Task 3.1: `home_screen.dart` — add gate-2 nav entries to tactical dashboard
 
 **Files:**
