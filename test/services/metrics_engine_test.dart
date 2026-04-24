@@ -147,7 +147,7 @@ void main() {
   });
 
   group('MetricsEngine.compute — totals and quality', () {
-    test('totalRoundsFired = count of HIT events', () {
+    test('totalRoundsFired counts only HIT events, not NS violations', () {
       final events = [
         SessionEvent(type: EventType.targetActivated, targetId: 1, requiredHits: 2, timestamp: _t(1000)),
         SessionEvent(type: EventType.hitDetected, targetId: 1, hitNumber: 1, requiredHits: 2, timestamp: _t(1200)),
@@ -193,6 +193,49 @@ void main() {
       ];
       final m = MetricsEngine.compute(sid, events);
       expect(m.dataQualityWarning, isTrue);
+    });
+  });
+
+  group('MetricsEngine.compute — transition threshold boundary', () {
+    // Helper: two-target events with configurable delay between DONE(1) and ACT(2)
+    List<SessionEvent> twoTargetWithDelay(int delayMs) => [
+      SessionEvent(type: EventType.targetActivated, targetId: 1, requiredHits: 1, timestamp: _t(0)),
+      SessionEvent(type: EventType.hitDetected, targetId: 1, hitNumber: 1, requiredHits: 1, timestamp: _t(200)),
+      SessionEvent(type: EventType.targetComplete, targetId: 1, totalTimeMs: 200, timestamp: _t(200)),
+      SessionEvent(type: EventType.targetActivated, targetId: 2, requiredHits: 1, timestamp: _t(200 + delayMs)),
+      SessionEvent(type: EventType.hitDetected, targetId: 2, hitNumber: 1, requiredHits: 1, timestamp: _t(200 + delayMs + 180)),
+      SessionEvent(type: EventType.targetComplete, targetId: 2, totalTimeMs: 180, timestamp: _t(200 + delayMs + 180)),
+      SessionEvent(type: EventType.drillFinished, timestamp: _t(200 + delayMs + 300)),
+    ];
+
+    test('exactly at threshold (150ms) counts as a transition', () {
+      final m = MetricsEngine.compute(sid, twoTargetWithDelay(150));
+      // preceding delay == threshold → transition = HIT(t2).first - HIT(t1).last
+      // = (200 + 150 + 180) - 200 = 330
+      expect(m.avgTransitionMs, 330);
+    });
+
+    test('one ms above threshold (151ms) — no transition, returns null', () {
+      final m = MetricsEngine.compute(sid, twoTargetWithDelay(151));
+      expect(m.avgTransitionMs, isNull);
+    });
+  });
+
+  group('MetricsEngine.compute — aborted drill (no FIN event)', () {
+    test('handles event stream with no FIN — partial metrics still computed', () {
+      final events = [
+        SessionEvent(type: EventType.targetActivated, targetId: 1, requiredHits: 1, timestamp: _t(1000)),
+        SessionEvent(type: EventType.hitDetected, targetId: 1, hitNumber: 1, requiredHits: 1, timestamp: _t(1300)),
+        // No DONE, no FIN — drill was aborted mid-run
+      ];
+      final m = MetricsEngine.compute(sid, events);
+      // Reaction is still computable
+      expect(m.engagements, hasLength(1));
+      expect(m.engagements.first.reactionMs, 300);
+      expect(m.totalRoundsFired, 1);
+      // Duration is null — no FIN event
+      expect(m.totalDurationMs, isNull);
+      // No crash
     });
   });
 

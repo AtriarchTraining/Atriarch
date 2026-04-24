@@ -4,9 +4,12 @@ import '../constants.dart';
 import '../models/computed_metrics.dart';
 import '../models/session_event.dart';
 
-// If the gap between DONE(prev) and ACT(next) is at or below this threshold,
-// the pair is a natural transition (last HIT → next first HIT).
-// Above this value a random delay is assumed; reaction time is used instead.
+// Threshold for classifying a preceding delay as a "natural transition" vs a
+// randomised drill delay. At or below this value the pair counts as a transition
+// (last HIT prev → first HIT next). Above it the gap is drill-programmed dead
+// time; the engagement is treated as an independent reaction, not a transition.
+// 150ms chosen as a practical upper bound for a shooter's natural target-to-target
+// movement time while still clearing firmware ACK latency (~50ms).
 const int _kTransitionThresholdMs = 150;
 
 class MetricsEngine {
@@ -117,7 +120,7 @@ class MetricsEngine {
       sessionId: sessionId,
       drawMs: drawMs,
       totalDurationMs: totalDurationMs,
-      totalRoundsFired: hitEvents.length,
+      totalRoundsFired: hitEvents.length, // NS events tracked separately, not counted as hits
       noShootCount:
           events.where((e) => e.type == EventType.noShootViolation).length,
       lateHitCount: events.where((e) => e.type == EventType.lateHit).length,
