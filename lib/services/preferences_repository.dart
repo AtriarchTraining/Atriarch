@@ -12,6 +12,7 @@ class PreferencesRepository {
   static const String _kLastRangeActivity = 'last_range_activity_ms';
   static const String _kReadyAudioEnabled = 'ready_audio_enabled';
   static const String _kReadyAudioVolume = 'ready_audio_volume';
+  static const String _kVisitStart = 'range_visit_start_ms';
 
   final SharedPreferences _prefs;
   PreferencesRepository(this._prefs);
@@ -101,6 +102,21 @@ class PreferencesRepository {
 
   Future<void> clearLastRangeActivity() async =>
       _prefs.remove(_kLastRangeActivity);
+
+  /// The moment the current range visit started. Set on the first activity
+  /// following a >=8h gap (or on cold-start). [RangeSessionView.listCurrent]
+  /// uses this as its cutoff so all drills of the visit stay visible even
+  /// as activity heartbeats advance [getLastRangeActivity].
+  Future<DateTime?> getVisitStart() async {
+    final ms = _prefs.getInt(_kVisitStart);
+    if (ms == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  Future<void> setVisitStart(DateTime t) async =>
+      _prefs.setInt(_kVisitStart, t.millisecondsSinceEpoch);
+
+  Future<void> clearVisitStart() async => _prefs.remove(_kVisitStart);
 
   // --- ready audio ---
   /// Whether the chime plays on discovery-complete. Defaults to true (on).

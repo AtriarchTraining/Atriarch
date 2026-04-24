@@ -9,6 +9,7 @@ class FakePreferencesRepository implements PreferencesRepository {
   Set<int> _removedTargetIds = {};
   bool _onboardingComplete = false;
   DateTime? _lastRangeActivity;
+  DateTime? _visitStart;
   bool _readyAudioEnabled = true;
   double _readyAudioVolume = 1.0;
 
@@ -52,6 +53,15 @@ class FakePreferencesRepository implements PreferencesRepository {
 
   @override
   Future<void> clearLastRangeActivity() async => _lastRangeActivity = null;
+
+  @override
+  Future<DateTime?> getVisitStart() async => _visitStart;
+
+  @override
+  Future<void> setVisitStart(DateTime t) async => _visitStart = t;
+
+  @override
+  Future<void> clearVisitStart() async => _visitStart = null;
 
   @override
   Future<bool> isReadyAudioEnabled() async => _readyAudioEnabled;
