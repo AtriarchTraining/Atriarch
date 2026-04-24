@@ -279,10 +279,37 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
       trailing: Consumer<AppState>(
         builder: (_, state, __) {
           final online = state.targets.where((t) => t.isOnline).length;
-          return TacticalStatusChip(
-            color:
-                online > 0 ? tokens.statusLive : tokens.statusOffline,
-            label: online > 0 ? 'live' : 'offline',
+          final drillLive = state.phase == DrillPhase.arming ||
+              state.phase == DrillPhase.running ||
+              state.phase == DrillPhase.stopping;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TacticalStatusChip(
+                color: online > 0 ? tokens.statusLive : tokens.statusOffline,
+                label: online > 0 ? 'live' : 'offline',
+              ),
+              PopupMenuButton<String>(
+                icon: Icon(Icons.more_vert, color: tokens.textSecondary),
+                color: tokens.bgElevated,
+                onSelected: (value) {
+                  if (value == 'scan') {
+                    state.resetDrillPhase();
+                    state.discoverTargets();
+                  }
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'scan',
+                    enabled: !drillLive,
+                    child: Text(
+                      'Scan for targets',
+                      style: TextStyle(color: tokens.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           );
         },
       ),
