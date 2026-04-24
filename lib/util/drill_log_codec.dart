@@ -49,7 +49,9 @@ class DrillLogCodec {
   }
 
   /// Convenience wrapper that emits a JSON string suitable for
-  /// [DrillLogRepository.writeLog].
+  /// Share.share or clipboard export (gate-2's DrillLogRepository is gone;
+  /// events now come from [SessionRepository.getEventsFor] or the in-memory
+  /// [DrillSession]).
   static String encode(
     DrillSession session, {
     String? presetName,

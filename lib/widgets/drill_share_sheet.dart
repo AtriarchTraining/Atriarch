@@ -59,9 +59,23 @@ class DrillShareSheet extends StatelessWidget {
                 top: AtriarchSpacing.sm,
                 bottom: AtriarchSpacing.md,
               ),
-              child: Text(
-                'Share drill',
-                style: Theme.of(context).textTheme.titleLarge,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'DRILL_SHARE',
+                    style: AtriarchText.labelTiny(color: tokens.statusHit),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'SHARE DRILL',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: tokens.textPrimary,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 2.4,
+                        ),
+                  ),
+                ],
               ),
             ),
             ListTile(
