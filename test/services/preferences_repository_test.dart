@@ -53,5 +53,26 @@ void main() {
       await repo.setLastRangeActivity(t);
       expect(await repo.getLastRangeActivity(), t);
     });
+
+    test('ready audio enabled round-trips (default true)', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final repo = PreferencesRepository(prefs);
+      expect(await repo.isReadyAudioEnabled(), isTrue);
+      await repo.setReadyAudioEnabled(false);
+      expect(await repo.isReadyAudioEnabled(), isFalse);
+    });
+
+    test('ready audio volume round-trips (default 1.0, clamped 0..1)',
+        () async {
+      final prefs = await SharedPreferences.getInstance();
+      final repo = PreferencesRepository(prefs);
+      expect(await repo.getReadyAudioVolume(), 1.0);
+      await repo.setReadyAudioVolume(0.5);
+      expect(await repo.getReadyAudioVolume(), 0.5);
+      await repo.setReadyAudioVolume(-0.2);
+      expect(await repo.getReadyAudioVolume(), 0.0);
+      await repo.setReadyAudioVolume(3.0);
+      expect(await repo.getReadyAudioVolume(), 1.0);
+    });
   });
 }

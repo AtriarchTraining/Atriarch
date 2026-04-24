@@ -100,6 +100,76 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: AtriarchSpacing.xl),
           const TacticalSection(
             code: 'SET_02',
+            trailing: 'READY_AUDIO',
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          Consumer<AppState>(
+            builder: (_, state, __) => TacticalCard(
+              child: Padding(
+                padding: const EdgeInsets.all(AtriarchSpacing.sm),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SwitchListTile(
+                      title: Text(
+                        'PLAY_READY_CHIME',
+                        style: AtriarchText.labelTiny(color: tokens.statusHit),
+                      ),
+                      subtitle: Text(
+                        'Plays once when all targets come online after a '
+                        'discovery cycle.',
+                        style:
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: tokens.textTertiary,
+                                ),
+                      ),
+                      value: state.readyAudioEnabled,
+                      activeThumbColor: tokens.statusLive,
+                      onChanged: (v) => state.setReadyAudioEnabled(v),
+                    ),
+                    if (state.readyAudioEnabled)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AtriarchSpacing.md,
+                          vertical: AtriarchSpacing.sm,
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              'VOLUME',
+                              style:
+                                  AtriarchText.labelTiny(color: tokens.statusHit),
+                            ),
+                            const SizedBox(width: AtriarchSpacing.md),
+                            Expanded(
+                              child: Slider(
+                                value: state.readyAudioVolume,
+                                activeColor: tokens.statusLive,
+                                onChanged: (v) => state.setReadyAudioVolume(v),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 44,
+                              child: Text(
+                                '${(state.readyAudioVolume * 100).round()}%',
+                                textAlign: TextAlign.right,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: tokens.textSecondary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AtriarchSpacing.xl),
+          const TacticalSection(
+            code: 'SET_03',
             trailing: 'ONBOARDING',
           ),
           const SizedBox(height: AtriarchSpacing.sm),

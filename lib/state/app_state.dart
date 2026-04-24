@@ -63,11 +63,15 @@ class AppState extends ChangeNotifier {
   bool _readyChimePlayedForCurrentCycle = false;
   // ignore: unused_field
   bool _discoveryDoneSeenForCurrentCycle = false;
+  bool _readyAudioEnabled = true;
+  double _readyAudioVolume = 1.0;
 
   Map<int, String> get targetNames => Map.unmodifiable(_targetNames);
   Set<int> get removedTargetIds => Set.unmodifiable(_removedTargetIds);
   bool get showRemoved => _showRemoved;
   bool get onboardingComplete => _onboardingComplete;
+  bool get readyAudioEnabled => _readyAudioEnabled;
+  double get readyAudioVolume => _readyAudioVolume;
 
   // --- Phase machine + telemetry (plan-1) ---
   DrillPhase _phase = DrillPhase.idle;
@@ -158,6 +162,8 @@ class AppState extends ChangeNotifier {
     _targetNames = await prefs.getTargetNames();
     _removedTargetIds = await prefs.getRemovedTargetIds();
     _onboardingComplete = await prefs.isOnboardingComplete();
+    _readyAudioEnabled = await prefs.isReadyAudioEnabled();
+    _readyAudioVolume = await prefs.getReadyAudioVolume();
     notifyListeners();
   }
 
@@ -202,6 +208,26 @@ class AppState extends ChangeNotifier {
   void setOnboardingCompleteForTesting(bool value) {
     _onboardingComplete = value;
     notifyListeners();
+  }
+
+  // --- Ready audio (gate-2) ---
+  Future<void> setReadyAudioEnabled(bool v) async {
+    _readyAudioEnabled = v;
+    await preferences?.setReadyAudioEnabled(v);
+    notifyListeners();
+  }
+
+  Future<void> setReadyAudioVolume(double v) async {
+    final clamped = v.clamp(0.0, 1.0);
+    _readyAudioVolume = clamped;
+    await preferences?.setReadyAudioVolume(clamped);
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  Future<void> playReadyChimeForTesting() async {
+    if (!_readyAudioEnabled) return;
+    await audio?.playReady(volume: _readyAudioVolume);
   }
 
   // --- Phase machine internals (plan-1 — untouched) ---
@@ -258,7 +284,9 @@ class AppState extends ChangeNotifier {
       // Gate-2 #15: play the "ready" chime once per discovery cycle.
       if (!_readyChimePlayedForCurrentCycle) {
         _readyChimePlayedForCurrentCycle = true;
-        unawaited(audio?.playReady(volume: 1.0));
+        if (_readyAudioEnabled) {
+          unawaited(audio?.playReady(volume: _readyAudioVolume));
+        }
       }
       notifyListeners();
       return;

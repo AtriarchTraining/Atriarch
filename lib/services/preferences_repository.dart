@@ -10,6 +10,8 @@ class PreferencesRepository {
   static const String _kRemovedTargetIds = 'removed_target_ids';
   static const String _kOnboardingComplete = 'onboarding_complete';
   static const String _kLastRangeActivity = 'last_range_activity_ms';
+  static const String _kReadyAudioEnabled = 'ready_audio_enabled';
+  static const String _kReadyAudioVolume = 'ready_audio_volume';
 
   final SharedPreferences _prefs;
   PreferencesRepository(this._prefs);
@@ -99,4 +101,21 @@ class PreferencesRepository {
 
   Future<void> clearLastRangeActivity() async =>
       _prefs.remove(_kLastRangeActivity);
+
+  // --- ready audio ---
+  /// Whether the chime plays on discovery-complete. Defaults to true (on).
+  Future<bool> isReadyAudioEnabled() async =>
+      _prefs.getBool(_kReadyAudioEnabled) ?? true;
+
+  Future<void> setReadyAudioEnabled(bool v) async =>
+      _prefs.setBool(_kReadyAudioEnabled, v);
+
+  /// Volume in [0, 1]. Defaults to 1.0. Out-of-range values are clamped.
+  Future<double> getReadyAudioVolume() async =>
+      _prefs.getDouble(_kReadyAudioVolume) ?? 1.0;
+
+  Future<void> setReadyAudioVolume(double v) async {
+    final clamped = v.clamp(0.0, 1.0);
+    await _prefs.setDouble(_kReadyAudioVolume, clamped);
+  }
 }
