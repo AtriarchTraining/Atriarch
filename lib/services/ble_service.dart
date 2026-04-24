@@ -156,12 +156,14 @@ class BleService {
         // Re-emit connected after successful reconnect.
         _emitStatus(ConnectionStatus.connected);
         _reconnectAttempt = 0;
-        // Ask transmitter to snapshot its state so AppState can reconcile.
-        try {
-          await write(TransmitterProtocol.encodeSnap());
-        } catch (_) {
-          // Non-fatal — AppState can still reconcile via next telemetry.
-        }
+        // SNAP/ on reconnect is DISABLED: NRF24 brown-out on transmitter
+        // causes handleSnap() reply to freeze the ESP32. Re-enable after
+        // 47uF bulk cap lands on NRF24 power pins.
+        // try {
+        //   await write(TransmitterProtocol.encodeSnap());
+        // } catch (_) {
+        //   // Non-fatal — AppState can still reconcile via next telemetry.
+        // }
       } catch (_) {
         _scheduleReconnect();
       }
