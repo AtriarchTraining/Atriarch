@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/atriarch_theme.dart';
+import '../../widgets/tactical/tactical_primary_button.dart';
 import 'onboarding_flow.dart';
 
 /// Step 1 of the first-run wizard (Gate 2 #19, addendum §7.10).
@@ -33,10 +34,11 @@ class WelcomeStep extends StatelessWidget {
                   ),
                   const SizedBox(height: AtriarchSpacing.xl),
                   Text(
-                    'Welcome to Atriarch',
+                    'WELCOME TO ATRIARCH',
                     style: Theme.of(context).textTheme.displaySmall?.copyWith(
                           color: tokens.textPrimary,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 2.4,
                         ),
                     textAlign: TextAlign.center,
                   ),
@@ -53,13 +55,9 @@ class WelcomeStep extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              onPressed: onContinue,
-              child: const Text('Continue'),
-            ),
+          TacticalPrimaryButton(
+            label: 'CONTINUE',
+            onPressed: onContinue,
           ),
           const SizedBox(height: AtriarchSpacing.xl),
         ],

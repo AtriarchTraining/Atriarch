@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
 import '../../theme/atriarch_theme.dart';
+import '../../widgets/tactical/tactical_primary_button.dart';
 import 'onboarding_flow.dart';
 
 /// Step 3 of the first-run wizard (Gate 2 #19, addendum §7.10).
@@ -97,8 +98,11 @@ class _DiscoverTargetsStepState extends State<DiscoverTargetsStep> {
           const OnboardingStepIndicator(currentStep: 3),
           const SizedBox(height: AtriarchSpacing.xl),
           Text(
-            'Discover targets',
-            style: Theme.of(context).textTheme.headlineMedium,
+            'DISCOVER TARGETS',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  letterSpacing: 2.4,
+                  fontWeight: FontWeight.w800,
+                ),
           ),
           const SizedBox(height: AtriarchSpacing.sm),
           Text(
@@ -150,28 +154,17 @@ class _DiscoverTargetsStepState extends State<DiscoverTargetsStep> {
           ),
           const SizedBox(height: AtriarchSpacing.xl),
           // Walk-the-Range placeholder. Full drop-in = Gate 2 #20.
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton.icon(
-              onPressed: _onWalkTheRange,
-              icon: const Icon(Icons.directions_walk),
-              label: const Text('Walk the Range'),
-            ),
+          TacticalPrimaryButton(
+            label: 'WALK_THE_RANGE',
+            icon: Icons.directions_walk,
+            onPressed: _onWalkTheRange,
           ),
           const SizedBox(height: AtriarchSpacing.md),
           // Photo Map — disabled per spec (Gate 3 scope).
-          Tooltip(
-            message: 'Photo Map lands in a later build.',
-            child: SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: OutlinedButton.icon(
-                onPressed: null,
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: const Text('Photo Map'),
-              ),
-            ),
+          const TacticalPrimaryButton(
+            label: 'PHOTO_MAP',
+            icon: Icons.photo_camera_outlined,
+            variant: TacticalButtonVariant.disabled,
           ),
           const Spacer(),
           Row(
@@ -179,7 +172,10 @@ class _DiscoverTargetsStepState extends State<DiscoverTargetsStep> {
               Expanded(
                 child: TextButton(
                   onPressed: _onSkip,
-                  child: const Text('Skip'),
+                  child: Text(
+                    'SKIP',
+                    style: AtriarchText.labelTiny(color: tokens.textTertiary),
+                  ),
                 ),
               ),
               const SizedBox(width: AtriarchSpacing.md),
@@ -188,12 +184,12 @@ class _DiscoverTargetsStepState extends State<DiscoverTargetsStep> {
                   builder: (_, state, __) {
                     final anyOnline =
                         state.targets.any((t) => t.isOnline);
-                    return SizedBox(
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: anyOnline ? widget.onContinue : null,
-                        child: const Text('Continue'),
-                      ),
+                    return TacticalPrimaryButton(
+                      label: 'CONTINUE',
+                      variant: anyOnline
+                          ? TacticalButtonVariant.primary
+                          : TacticalButtonVariant.disabled,
+                      onPressed: anyOnline ? widget.onContinue : null,
                     );
                   },
                 ),

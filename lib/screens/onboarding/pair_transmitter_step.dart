@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
 import '../../theme/atriarch_theme.dart';
+import '../../widgets/tactical/tactical_primary_button.dart';
 import 'onboarding_flow.dart';
 
 /// Step 2 of the first-run wizard (Gate 2 #19, addendum §7.10).
@@ -128,8 +129,11 @@ class _PairTransmitterStepState extends State<PairTransmitterStep> {
           const OnboardingStepIndicator(currentStep: 2),
           const SizedBox(height: AtriarchSpacing.xl),
           Text(
-            'Pair your transmitter',
-            style: Theme.of(context).textTheme.headlineMedium,
+            'PAIR YOUR TRANSMITTER',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  letterSpacing: 2.4,
+                  fontWeight: FontWeight.w800,
+                ),
           ),
           const SizedBox(height: AtriarchSpacing.sm),
           Text(
@@ -152,14 +156,10 @@ class _PairTransmitterStepState extends State<PairTransmitterStep> {
           if (!_paired && _failureCount >= 1) ...[
             _HelpCard(tokens: tokens),
             const SizedBox(height: AtriarchSpacing.md),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: OutlinedButton.icon(
-                onPressed: _onRetry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
-              ),
+            TacticalPrimaryButton(
+              label: 'RETRY',
+              icon: Icons.refresh,
+              onPressed: _onRetry,
             ),
           ],
           const SizedBox(height: AtriarchSpacing.md),

@@ -5,6 +5,7 @@ import '../../models/drill_config.dart';
 import '../../models/target_unit.dart';
 import '../../state/app_state.dart';
 import '../../theme/atriarch_theme.dart';
+import '../../widgets/tactical/tactical_primary_button.dart';
 import '../drill_running_screen.dart';
 import 'onboarding_flow.dart';
 
@@ -85,8 +86,11 @@ class _FirstDrillStepState extends State<FirstDrillStep> {
               const OnboardingStepIndicator(currentStep: 4),
               const SizedBox(height: AtriarchSpacing.xl),
               Text(
-                'Run your first drill',
-                style: Theme.of(context).textTheme.headlineMedium,
+                'RUN YOUR FIRST DRILL',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      letterSpacing: 2.4,
+                      fontWeight: FontWeight.w800,
+                    ),
               ),
               const SizedBox(height: AtriarchSpacing.sm),
               Text(
@@ -166,15 +170,14 @@ class _FirstDrillStepState extends State<FirstDrillStep> {
                     textAlign: TextAlign.center,
                   ),
                 ),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _starting
-                      ? null
-                      : (hasEnough ? _start : widget.onSkipNoTargets),
-                  child: Text(hasEnough ? 'Start' : 'Finish'),
-                ),
+              TacticalPrimaryButton(
+                label: hasEnough ? 'START' : 'FINISH',
+                variant: _starting
+                    ? TacticalButtonVariant.loading
+                    : TacticalButtonVariant.primary,
+                onPressed: _starting
+                    ? null
+                    : (hasEnough ? _start : widget.onSkipNoTargets),
               ),
               const SizedBox(height: AtriarchSpacing.md),
             ],

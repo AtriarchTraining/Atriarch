@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
 import '../../theme/atriarch_theme.dart';
+import '../../widgets/tactical/tactical_app_bar.dart';
+import '../../widgets/tactical/tactical_grid_background.dart';
 import '../home_screen.dart';
 import 'discover_targets_step.dart';
 import 'first_drill_step.dart';
@@ -96,28 +98,26 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Widget build(BuildContext context) {
     final step = _index + 1;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Setup · Step $step of $_kOnboardingStepCount'),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          tooltip: 'Quit setup',
-          onPressed: _confirmQuit,
-        ),
+      appBar: TacticalAppBar(
+        title: 'SETUP // STEP $step / $_kOnboardingStepCount',
+        onMenuTap: _confirmQuit,
       ),
-      body: SafeArea(
-        child: PageView(
-          controller: _controller,
-          physics: const NeverScrollableScrollPhysics(),
-          onPageChanged: (i) => setState(() => _index = i),
-          children: [
-            WelcomeStep(onContinue: () => _goTo(1)),
-            PairTransmitterStep(onPaired: () => _goTo(2)),
-            DiscoverTargetsStep(
-              onContinue: () => _goTo(3),
-              onSkip: () => _goTo(3),
-            ),
-            FirstDrillStep(onSkipNoTargets: _finishWithoutDrill),
-          ],
+      body: TacticalGridBackground(
+        child: SafeArea(
+          child: PageView(
+            controller: _controller,
+            physics: const NeverScrollableScrollPhysics(),
+            onPageChanged: (i) => setState(() => _index = i),
+            children: [
+              WelcomeStep(onContinue: () => _goTo(1)),
+              PairTransmitterStep(onPaired: () => _goTo(2)),
+              DiscoverTargetsStep(
+                onContinue: () => _goTo(3),
+                onSkip: () => _goTo(3),
+              ),
+              FirstDrillStep(onSkipNoTargets: _finishWithoutDrill),
+            ],
+          ),
         ),
       ),
     );
