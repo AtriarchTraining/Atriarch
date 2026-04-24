@@ -196,6 +196,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Test-only direct setter for [onboardingComplete]. Production code
+  /// should go through [hydratePreferences] + [markOnboardingComplete].
+  @visibleForTesting
+  void setOnboardingCompleteForTesting(bool value) {
+    _onboardingComplete = value;
+    notifyListeners();
+  }
+
   // --- Phase machine internals (plan-1 — untouched) ---
   void _setPhase(DrillPhase next) {
     if (_phase == next) return;

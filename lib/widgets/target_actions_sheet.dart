@@ -69,7 +69,7 @@ class TargetActionsSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    displayName.toUpperCase(),
+                    displayName,
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,

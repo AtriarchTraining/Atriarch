@@ -7,9 +7,10 @@ import 'package:atriarch/screens/home_screen.dart';
 
 void main() {
   testWidgets('app boots to home screen with dark theme', (tester) async {
+    final state = AppState()..setOnboardingCompleteForTesting(true);
     await tester.pumpWidget(
-      ChangeNotifierProvider(
-        create: (_) => AppState(),
+      ChangeNotifierProvider<AppState>.value(
+        value: state,
         child: MaterialApp(
           theme: buildAtriarchDarkTheme(),
           home: const HomeScreen(),

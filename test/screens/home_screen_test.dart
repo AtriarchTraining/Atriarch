@@ -7,9 +7,10 @@ import 'package:atriarch/screens/home_screen.dart';
 
 void main() {
   testWidgets('renders three tactical program rows', (tester) async {
+    final state = AppState()..setOnboardingCompleteForTesting(true);
     await tester.pumpWidget(
-      ChangeNotifierProvider(
-        create: (_) => AppState(),
+      ChangeNotifierProvider<AppState>.value(
+        value: state,
         child: MaterialApp(
           theme: buildAtriarchDarkTheme(),
           home: const HomeScreen(),
