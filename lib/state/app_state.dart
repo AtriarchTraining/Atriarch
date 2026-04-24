@@ -89,6 +89,15 @@ class AppState extends ChangeNotifier {
   int _iterationsCompleted = 0;
   Future<void>? _pendingClose;
 
+  /// Public read access for screens (Results share-sheet etc.) that need the
+  /// id of the DB session backing [currentSession].
+  String? get activeSessionId => _activeDbSessionId;
+
+  /// Public read access to the session repository for screens that need to
+  /// query historical events (Results share-sheet reads via
+  /// [SessionRepository.getEventsFor]).
+  SessionRepository? get sessions => _sessions;
+
   AppState._internal({
     SessionRepository? sessions,
     ShooterState? shooterState,
