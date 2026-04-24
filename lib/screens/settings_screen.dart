@@ -1,34 +1,147 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-/// Settings screen — Phase-3 TODO stub.
+import '../state/app_state.dart';
+import '../theme/atriarch_theme.dart';
+import '../widgets/tactical/tactical_card.dart';
+import '../widgets/tactical/tactical_primary_button.dart';
+import '../widgets/tactical/tactical_scaffold.dart';
+import '../widgets/tactical/tactical_section.dart';
+import 'onboarding/onboarding_flow.dart';
+
+/// Settings — tactical retrofit (Stage-3 Phase-3 Task 3.6).
 ///
-/// Gate-2 shipped a Theme/Ready-Audio/Onboarding settings screen that
-/// referenced `ThemePreference` (collapsed to dark-only in Stage-3),
-/// `readyAudioEnabled`/`readyAudioVolume` on AppState (not yet ported), and
-/// `setOnboardingComplete(false)` (the AppState API is
-/// `markOnboardingComplete()`).
-///
-/// Phase-3 Task 3.x rewrites this screen tactically. For Phase-2 exit the
-/// tree must compile cleanly — this stub keeps the public type `SettingsScreen`
-/// importable so `home_screen.dart` can route to it, and shows a placeholder
-/// until the real Phase-3 content lands.
+/// Theme toggle dropped (dark-only gate, memory: project_theme_dark_only.md).
+/// Ready-audio toggle deferred to Phase 4 (AppState wiring not yet ported).
+/// Ships three sections: target visibility, range-session control, and
+/// onboarding replay.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'Settings — Phase 3 TODO.\n\n'
-            'Theme is dark-only (Stage-3 gate). Ready-audio toggle + volume '
-            'and onboarding re-entry will land in Phase 3 tactical retrofit.',
-            textAlign: TextAlign.center,
+    final tokens = context.atriarch;
+    return TacticalScaffold(
+      title: 'SETTINGS',
+      body: ListView(
+        padding: const EdgeInsets.all(AtriarchSpacing.lg),
+        children: [
+          const TacticalSection(code: 'SET_00', trailing: 'TARGETS'),
+          const SizedBox(height: AtriarchSpacing.sm),
+          Consumer<AppState>(
+            builder: (_, state, __) => TacticalCard(
+              child: SwitchListTile(
+                title: Text(
+                  'SHOW_REMOVED',
+                  style: AtriarchText.labelTiny(color: tokens.statusHit),
+                ),
+                subtitle: Text(
+                  'Include soft-deleted targets in setup screens.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: tokens.textTertiary,
+                      ),
+                ),
+                value: state.showRemoved,
+                activeThumbColor: tokens.statusLive,
+                onChanged: (_) => state.toggleShowRemoved(),
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: AtriarchSpacing.xl),
+          const TacticalSection(
+            code: 'SET_01',
+            trailing: 'RANGE_SESSION',
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalCard(
+            child: Padding(
+              padding: const EdgeInsets.all(AtriarchSpacing.sm),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding:
+                        const EdgeInsets.only(bottom: AtriarchSpacing.sm),
+                    child: Text(
+                      'Start a fresh range session. Historical drills stay '
+                      'in the database; only the current-session cutoff moves '
+                      'forward.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: tokens.textTertiary,
+                          ),
+                    ),
+                  ),
+                  Consumer<AppState>(
+                    builder: (_, state, __) => TacticalPrimaryButton(
+                      label: 'CLEAR_CURRENT_SESSION',
+                      onPressed: state.rangeSessionView == null
+                          ? null
+                          : () async {
+                              await state.rangeSessionView!.clearCurrent();
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Range session cleared. '
+                                    'Recent drills reset to empty.',
+                                  ),
+                                ),
+                              );
+                            },
+                      variant: state.rangeSessionView == null
+                          ? TacticalButtonVariant.disabled
+                          : TacticalButtonVariant.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AtriarchSpacing.xl),
+          const TacticalSection(
+            code: 'SET_02',
+            trailing: 'ONBOARDING',
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalCard(
+            child: Padding(
+              padding: const EdgeInsets.all(AtriarchSpacing.sm),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding:
+                        const EdgeInsets.only(bottom: AtriarchSpacing.sm),
+                    child: Text(
+                      'Replay the first-run wizard. Your transmitter pairing '
+                      'stays saved.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: tokens.textTertiary,
+                          ),
+                    ),
+                  ),
+                  TacticalPrimaryButton(
+                    label: 'REPLAY_ONBOARDING',
+                    onPressed: () async {
+                      final state = context.read<AppState>();
+                      final navigator = Navigator.of(context);
+                      await state.preferences?.setOnboardingComplete(false);
+                      // Mirror the in-memory flag so the home-screen gate
+                      // re-fires without waiting for a hydrate.
+                      if (!context.mounted) return;
+                      navigator.pushReplacement(
+                        MaterialPageRoute(
+                          builder: (_) => const OnboardingFlow(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AtriarchSpacing.xxl),
+        ],
       ),
     );
   }
