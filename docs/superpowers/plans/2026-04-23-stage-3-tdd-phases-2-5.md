@@ -3409,9 +3409,302 @@ Chrome preview: launches cleanly"
 
 ---
 
-## Phase 4: Test Coverage Repair
+## Phase 4: Test Coverage Repair (+ Ready-Audio Wiring)
 
-Goal: gate-2's broken widget tests rewritten on fake-repo pattern. ≥95% of combined suite passes. One integration test covers the cross-cutting path.
+Goal: gate-2's broken widget tests rewritten on fake-repo pattern. Ready-audio toggle + volume persisted and surfaced in Settings (deferred from Phase 2/3 — AppState API wasn't ported). ≥95% of combined suite passes. One integration test covers the cross-cutting path.
+
+### Task 4.0: Wire ready-audio enabled + volume through AppState + PreferencesRepository
+
+Gate-2 shipped a ready-chime toggle + volume slider. Phase 2 dropped them because `AudioService.init()` was ported but the AppState persistence + reader API wasn't. This task adds that back: two PreferencesRepository keys, two AppState fields + setters, respect the flag in `_handleIncomingData` on `DiscoveryDone`, and a Settings section.
+
+**Files:**
+- Modify: `lib/services/preferences_repository.dart`
+- Modify: `lib/state/app_state.dart`
+- Modify: `lib/screens/settings_screen.dart`
+- Modify: `lib/services/audio_service.dart` (add `setVolume(double)` or accept volume in `playReadyChime` — whichever matches the existing just_audio wrapper shape)
+- Test: `test/services/preferences_repository_test.dart` (extend)
+- Test: `test/state/app_state_ready_audio_test.dart` (new)
+
+- [ ] **Step 1: Extend `test/services/preferences_repository_test.dart`**
+
+Add these two tests to the existing group:
+
+```dart
+test('ready audio enabled round-trips (default true)', () async {
+  final prefs = await SharedPreferences.getInstance();
+  final repo = PreferencesRepository(prefs);
+  expect(await repo.isReadyAudioEnabled(), isTrue);
+  await repo.setReadyAudioEnabled(false);
+  expect(await repo.isReadyAudioEnabled(), isFalse);
+});
+
+test('ready audio volume round-trips (default 1.0, clamped 0..1)', () async {
+  final prefs = await SharedPreferences.getInstance();
+  final repo = PreferencesRepository(prefs);
+  expect(await repo.getReadyAudioVolume(), 1.0);
+  await repo.setReadyAudioVolume(0.5);
+  expect(await repo.getReadyAudioVolume(), 0.5);
+  await repo.setReadyAudioVolume(-0.2);
+  expect(await repo.getReadyAudioVolume(), 0.0);
+  await repo.setReadyAudioVolume(3.0);
+  expect(await repo.getReadyAudioVolume(), 1.0);
+});
+```
+
+- [ ] **Step 2: Run — expect fail**
+
+Run: `flutter test test/services/preferences_repository_test.dart`
+Expected: FAIL — `isReadyAudioEnabled` / `getReadyAudioVolume` undefined.
+
+- [ ] **Step 3: Implement in `lib/services/preferences_repository.dart`**
+
+Add the two keys to the constants block at the top of the class:
+
+```dart
+  static const String _kReadyAudioEnabled = 'ready_audio_enabled';
+  static const String _kReadyAudioVolume = 'ready_audio_volume';
+```
+
+Add these methods near the end of the class (before `clearLastRangeActivity`):
+
+```dart
+  // --- ready audio ---
+  /// Whether the chime plays on discovery-complete. Defaults to true (on).
+  Future<bool> isReadyAudioEnabled() async =>
+      _prefs.getBool(_kReadyAudioEnabled) ?? true;
+
+  Future<void> setReadyAudioEnabled(bool v) async =>
+      _prefs.setBool(_kReadyAudioEnabled, v);
+
+  /// Volume in [0, 1]. Defaults to 1.0. Out-of-range values are clamped.
+  Future<double> getReadyAudioVolume() async =>
+      _prefs.getDouble(_kReadyAudioVolume) ?? 1.0;
+
+  Future<void> setReadyAudioVolume(double v) async {
+    final clamped = v.clamp(0.0, 1.0);
+    await _prefs.setDouble(_kReadyAudioVolume, clamped);
+  }
+```
+
+- [ ] **Step 4: Run — expect pass**
+
+Run: `flutter test test/services/preferences_repository_test.dart`
+Expected: PASS (7 tests total now).
+
+- [ ] **Step 5: Write failing test for AppState ready-audio behavior**
+
+Create `test/state/app_state_ready_audio_test.dart`:
+
+```dart
+import 'package:atriarch/state/app_state.dart';
+import 'package:atriarch/state/shooter_state.dart';
+import 'package:atriarch/repositories/shooter_repository.dart';
+import 'package:atriarch/services/audio_service.dart';
+import 'package:atriarch/services/preferences_repository.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../test_helpers/fake_shooter_repo.dart';
+
+class _CountingAudio implements AudioService {
+  int playCount = 0;
+  double? lastVolume;
+  @override
+  Future<void> init() async {}
+  @override
+  Future<void> playReadyChime({double volume = 1.0}) async {
+    playCount++;
+    lastVolume = volume;
+  }
+  @override
+  Future<void> dispose() async {}
+}
+
+void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  group('AppState ready-audio gating', () {
+    late _CountingAudio audio;
+    late AppState state;
+    late PreferencesRepository prefs;
+
+    Future<void> build({bool enabled = true, double volume = 1.0}) async {
+      final sp = await SharedPreferences.getInstance();
+      prefs = PreferencesRepository(sp);
+      await prefs.setReadyAudioEnabled(enabled);
+      await prefs.setReadyAudioVolume(volume);
+      audio = _CountingAudio();
+      final shooterRepo = FakeShooterRepo([makeUnassignedShooter()]);
+      state = AppState(
+        shooterState: ShooterState(shooterRepo),
+        preferences: prefs,
+        audio: audio,
+      );
+      await state.hydratePreferences();
+    }
+
+    test('plays chime when enabled and passes configured volume', () async {
+      await build(enabled: true, volume: 0.6);
+      await state.playReadyChimeForTesting();
+      expect(audio.playCount, 1);
+      expect(audio.lastVolume, 0.6);
+    });
+
+    test('does not play chime when disabled', () async {
+      await build(enabled: false);
+      await state.playReadyChimeForTesting();
+      expect(audio.playCount, 0);
+    });
+  });
+}
+```
+
+- [ ] **Step 6: Run — expect fail**
+
+Run: `flutter test test/state/app_state_ready_audio_test.dart`
+Expected: FAIL — `playReadyChimeForTesting` + `AudioService.playReadyChime(volume:)` signatures don't exist yet.
+
+- [ ] **Step 7: Extend `lib/services/audio_service.dart` to accept an optional volume**
+
+If it currently has `playReadyChime()`, change to `playReadyChime({double volume = 1.0})` and apply the volume via just_audio's `setVolume` before play. Exact call depends on the ported gate-2 code — grep the file for the existing player setup; add `await _player.setVolume(volume);` immediately before `_player.play()`.
+
+- [ ] **Step 8: Add AppState fields + hydration + emission**
+
+In `lib/state/app_state.dart`:
+
+Add fields after `_removedTargetIds`:
+
+```dart
+  bool _readyAudioEnabled = true;
+  double _readyAudioVolume = 1.0;
+
+  bool get readyAudioEnabled => _readyAudioEnabled;
+  double get readyAudioVolume => _readyAudioVolume;
+```
+
+Extend `hydratePreferences()` to read them:
+
+```dart
+    _readyAudioEnabled = await prefs.isReadyAudioEnabled();
+    _readyAudioVolume = await prefs.getReadyAudioVolume();
+```
+
+Add setter methods (below `markOnboardingComplete`):
+
+```dart
+  Future<void> setReadyAudioEnabled(bool v) async {
+    _readyAudioEnabled = v;
+    await preferences?.setReadyAudioEnabled(v);
+    notifyListeners();
+  }
+
+  Future<void> setReadyAudioVolume(double v) async {
+    final clamped = v.clamp(0.0, 1.0);
+    _readyAudioVolume = clamped;
+    await preferences?.setReadyAudioVolume(clamped);
+    notifyListeners();
+  }
+```
+
+In `_handleIncomingData`, find the `DiscoveryDone` branch where `audio?.playReadyChime()` is called (Phase 2 added it unconditionally). Replace with:
+
+```dart
+      if (!_readyChimePlayedForCurrentCycle) {
+        _readyChimePlayedForCurrentCycle = true;
+        if (_readyAudioEnabled) {
+          unawaited(audio?.playReadyChime(volume: _readyAudioVolume));
+        }
+      }
+```
+
+Add a testing helper near `handleSessionEventForTesting`:
+
+```dart
+  @visibleForTesting
+  Future<void> playReadyChimeForTesting() async {
+    if (_readyAudioEnabled) {
+      await audio?.playReadyChime(volume: _readyAudioVolume);
+    }
+  }
+```
+
+- [ ] **Step 9: Run — expect pass**
+
+Run: `flutter test test/state/app_state_ready_audio_test.dart`
+Expected: PASS (2 tests).
+
+- [ ] **Step 10: Wire the Settings `SET_03 // READY_AUDIO` section**
+
+Edit `lib/screens/settings_screen.dart`. Add a third section after the RANGE_SESSION one (before ONBOARDING):
+
+```dart
+const SizedBox(height: 16),
+TacticalSection(code: 'SET_03', title: 'READY_AUDIO'),
+TacticalCard(
+  child: Padding(
+    padding: const EdgeInsets.all(8),
+    child: Column(
+      children: [
+        SwitchListTile(
+          title: const Text('Play chime on ready'),
+          value: state.readyAudioEnabled,
+          onChanged: (v) => state.setReadyAudioEnabled(v),
+        ),
+        if (state.readyAudioEnabled)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                const Text('Volume'),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Slider(
+                    value: state.readyAudioVolume,
+                    onChanged: (v) => state.setReadyAudioVolume(v),
+                  ),
+                ),
+                SizedBox(
+                  width: 40,
+                  child: Text(
+                    '${(state.readyAudioVolume * 100).round()}%',
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    ),
+  ),
+),
+```
+
+- [ ] **Step 11: Run analyze + all tests**
+
+Run: `flutter analyze lib/ && flutter test 2>&1 | tail -5`
+Expected: analyze clean; all tests pass. Ready-audio-gate tests add 2 to total (155 expected).
+
+- [ ] **Step 12: Safety-critical signature check (AppState was touched)**
+
+Run: `./tool/check_safety_critical.sh`
+Expected: all 11 OK.
+
+- [ ] **Step 13: Commit**
+
+```bash
+git add lib/services/preferences_repository.dart lib/state/app_state.dart lib/screens/settings_screen.dart lib/services/audio_service.dart test/services/preferences_repository_test.dart test/state/app_state_ready_audio_test.dart
+git commit -m "feat(audio): wire ready-chime enabled + volume through prefs + Settings
+
+PreferencesRepository gains isReadyAudioEnabled/setReadyAudioEnabled +
+getReadyAudioVolume/setReadyAudioVolume (clamped 0..1). AppState
+hydrates on startup; _handleIncomingData gates the DiscoveryDone chime
+on _readyAudioEnabled and passes _readyAudioVolume to AudioService.
+Settings gains SET_03 // READY_AUDIO section with toggle + volume
+slider. Deferred from Phase 2 (API not yet on AppState) and Phase 3
+(Settings rewrite skipped it)."
+```
+
+---
 
 ### Task 4.1: Build `FakePreferencesRepository` in test/test_helpers/
 
@@ -3429,6 +3722,8 @@ class FakePreferencesRepository implements PreferencesRepository {
   Set<int> _removedTargetIds = {};
   bool _onboardingComplete = false;
   DateTime? _lastRangeActivity;
+  bool _readyAudioEnabled = true;
+  double _readyAudioVolume = 1.0;
 
   @override
   Future<String?> getDefaultPresetId() async => _defaultPresetId;
@@ -3472,6 +3767,19 @@ class FakePreferencesRepository implements PreferencesRepository {
 
   @override
   Future<void> clearLastRangeActivity() async => _lastRangeActivity = null;
+
+  @override
+  Future<bool> isReadyAudioEnabled() async => _readyAudioEnabled;
+
+  @override
+  Future<void> setReadyAudioEnabled(bool v) async => _readyAudioEnabled = v;
+
+  @override
+  Future<double> getReadyAudioVolume() async => _readyAudioVolume;
+
+  @override
+  Future<void> setReadyAudioVolume(double v) async =>
+      _readyAudioVolume = v.clamp(0.0, 1.0);
 }
 ```
 
