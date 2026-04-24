@@ -1,16 +1,20 @@
-# Spring Test Project ESP32 and BLE Flutter App for iOS and Android
+# Atriarch
 
-Demonstrates how to use the flutter_blue plugin.
+Wireless reactive target training system for shooting, reaction, law enforcement, and competition-style drills.
 
-## Getting Started
+## Architecture
 
-This project is a starting point for a Flutter application.
+- **Flutter App** (iOS/Android) — drill configuration, timer, post-drill results
+- **Transmitter** (ATmega328P + HM-10 BLE + NRF24L01) — drill orchestration
+- **Targets** (Arduino Nano + NRF24L01 + WS2812 + vibration sensor) — up to 30 units
 
-A few resources to get you started if this is your first Flutter project:
+See `docs/superpowers/specs/` for the full system design spec.
 
-- [Lab: Write your first Flutter app](https://flutter.dev/docs/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://flutter.dev/docs/cookbook)
+## Development
 
-For help getting started with Flutter, view our
-[online documentation](https://flutter.dev/docs), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter pub get
+flutter run
+```
+
+Firmware is in `firmware/target/` and `firmware/transmitter/`. Open in Arduino IDE.

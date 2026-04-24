@@ -1,14 +1,23 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility that Flutter provides. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:atriarch/state/app_state.dart';
+import 'package:atriarch/theme/atriarch_theme.dart';
+import 'package:atriarch/screens/home_screen.dart';
 
 void main() {
-  testWidgets('First test', (WidgetTester tester) async {
-    // TODO: Add tests
+  testWidgets('app boots to home screen with dark theme', (tester) async {
+    final state = AppState()..setOnboardingCompleteForTesting(true);
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppState>.value(
+        value: state,
+        child: MaterialApp(
+          theme: buildAtriarchDarkTheme(),
+          home: const HomeScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('ATRIARCH // HOME'), findsOneWidget);
   });
 }
