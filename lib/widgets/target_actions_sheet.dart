@@ -60,13 +60,24 @@ class TargetActionsSheet extends StatelessWidget {
                 AtriarchSpacing.lg,
                 AtriarchSpacing.sm,
               ),
-              child: Text(
-                displayName,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: tokens.textPrimary,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'NODE_ACTIONS',
+                    style: AtriarchText.labelTiny(color: tokens.statusHit),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    displayName.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.4,
+                      color: tokens.textPrimary,
+                    ),
+                  ),
+                ],
               ),
             ),
             _ActionRow(
