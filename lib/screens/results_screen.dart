@@ -20,7 +20,7 @@ class ResultsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.read<AppState>();
+    final state = context.watch<AppState>();
     final session = state.currentSession;
 
     if (session == null) {
@@ -31,6 +31,7 @@ class ResultsScreen extends StatelessWidget {
     }
 
     final tokens = context.atriarch;
+    final metrics = state.currentMetrics;
     final events = session.events;
     final activations =
         events.where((e) => e.type == EventType.targetActivated).toList();
@@ -126,6 +127,43 @@ class ResultsScreen extends StatelessWidget {
               child: _PerTargetRow(id: entry.key, stats: entry.value),
             ),
           ),
+          if (metrics != null) ...[
+            const SizedBox(height: AtriarchSpacing.xl),
+            const TacticalSection(code: 'SUMMARY_TIMING', trailing: 'TIMING'),
+            const SizedBox(height: AtriarchSpacing.sm),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 2.4,
+              mainAxisSpacing: AtriarchSpacing.sm,
+              crossAxisSpacing: AtriarchSpacing.sm,
+              children: [
+                TacticalHudTile(
+                  label: 'draw',
+                  value: metrics.drawMs != null ? '${metrics.drawMs}MS' : '--',
+                ),
+                TacticalHudTile(
+                  label: 'avg reaction',
+                  value: metrics.avgReactionMs != null
+                      ? '${metrics.avgReactionMs}MS'
+                      : '--',
+                ),
+                TacticalHudTile(
+                  label: 'avg split',
+                  value: metrics.avgSplitMs != null
+                      ? '${metrics.avgSplitMs}MS'
+                      : '--',
+                ),
+                TacticalHudTile(
+                  label: 'transition',
+                  value: metrics.avgTransitionMs != null
+                      ? '${metrics.avgTransitionMs}MS'
+                      : '--',
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: AtriarchSpacing.xl),
           const TacticalSection(code: 'SUMMARY_03', trailing: 'EVENT_LOG'),
           const SizedBox(height: AtriarchSpacing.sm),
