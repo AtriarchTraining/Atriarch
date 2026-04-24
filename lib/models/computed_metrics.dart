@@ -1,4 +1,10 @@
 // lib/models/computed_metrics.dart
+//
+// Derived/cached analytics rows populated by MetricsEngine after each drill.
+// ComputedMetrics maps 1:1 to session_metrics; each TargetEngagementMetrics
+// maps 1:1 to a row in target_engagements. Note: ComputedMetrics.toSessionMetricsMap()
+// serialises only the session_metrics columns — engagements are persisted
+// separately via TargetEngagementMetrics.toMap().
 import 'package:flutter/foundation.dart';
 
 @immutable
@@ -42,6 +48,21 @@ class TargetEngagementMetrics {
         'was_no_shoot': wasNoShoot ? 1 : 0,
         'had_late_hit': hadLateHit ? 1 : 0,
       };
+
+  factory TargetEngagementMetrics.fromMap(Map<String, Object?> m) =>
+      TargetEngagementMetrics(
+        sessionId: m['session_id'] as String,
+        targetId: m['target_id'] as int,
+        engagementIndex: m['engagement_index'] as int,
+        activatedAtMs: m['activated_at'] as int,
+        precedingDelayMs: m['preceding_delay_ms'] as int,
+        reactionMs: m['reaction_ms'] as int?,
+        hitsLanded: m['hits_landed'] as int,
+        requiredHits: m['required_hits'] as int,
+        engagementTimeMs: m['engagement_time_ms'] as int?,
+        wasNoShoot: (m['was_no_shoot'] as int) == 1,
+        hadLateHit: (m['had_late_hit'] as int) == 1,
+      );
 }
 
 @immutable
@@ -93,4 +114,25 @@ class ComputedMetrics {
         'data_quality_warning': dataQualityWarning ? 1 : 0,
         'metrics_version': metricsVersion,
       };
+
+  factory ComputedMetrics.fromSessionMetricsMap(
+    Map<String, Object?> m, {
+    required List<TargetEngagementMetrics> engagements,
+  }) =>
+      ComputedMetrics(
+        sessionId: m['session_id'] as String,
+        drawMs: m['draw_ms'] as int?,
+        totalDurationMs: m['total_duration_ms'] as int?,
+        totalRoundsFired: m['total_rounds_fired'] as int,
+        noShootCount: m['no_shoot_count'] as int,
+        lateHitCount: m['late_hit_count'] as int,
+        avgReactionMs: m['avg_reaction_ms'] as int?,
+        medianReactionMs: m['median_reaction_ms'] as int?,
+        stddevReactionMs: m['stddev_reaction_ms'] as int?,
+        avgSplitMs: m['avg_split_ms'] as int?,
+        avgTransitionMs: m['avg_transition_ms'] as int?,
+        dataQualityWarning: (m['data_quality_warning'] as int) == 1,
+        metricsVersion: m['metrics_version'] as int,
+        engagements: engagements,
+      );
 }
