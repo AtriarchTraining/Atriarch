@@ -107,6 +107,10 @@ class AppState extends ChangeNotifier {
   /// [SessionRepository.getEventsFor]).
   SessionRepository? get sessions => _sessions;
 
+  /// Public read access to the metrics repository for screens that need to
+  /// query and display computed metrics.
+  MetricsRepository? get metricsRepo => _metricsRepo;
+
   AppState._internal({
     SessionRepository? sessions,
     ShooterState? shooterState,
