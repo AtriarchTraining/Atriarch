@@ -1,8 +1,8 @@
 # Stage 3: Integrate Gate-2 into Tactical + SQLite System-v2
 
-> **Status:** Gates locked 2026-04-23 via `superpowers:brainstorming`. Proceeding to `superpowers:writing-plans` for TDD task breakdown.
+> **Status:** COMPLETE — merged to `feature/system-v2` as commit `259c01d` on 2026-04-23. All exit criteria met: `flutter analyze` clean, 161/161 tests passing, all 11 safety-critical signatures preserved, real-device smoke exercised on iPhone (2). See TDD breakdown at `2026-04-23-stage-3-tdd-phases-2-5.md`.
 
-**Date:** 2026-04-21 (plan draft); 2026-04-23 (gates locked)
+**Date:** 2026-04-21 (plan draft); 2026-04-23 (gates locked + executed + merged)
 **Goal:** Merge `gate-2-work` (10 commits) into `feature/system-v2` (currently post-Stage-2, at `8b8e941`), reconciling gate-2's Hive-backed repositories against plan-1's SQLite, and integrating gate-2's features (onboarding wizard, walk-the-range, presets, session history, drill log, ready-audio, dark-theme toggle, user-named targets) with the tactical UI layer.
 
 **Why this is its own workstream:** Attempted inline during the Gate-1 closeout merge orchestration on 2026-04-21 and aborted. Scope turned out to be 10 files with 34 conflict hunks + 200–400 lines of Hive→SQLite bridge code + semantic reconciliation between two independently-designed subsystems. Not a merge-conflict-resolution task — a focused 3–6 hour engineering task that deserves a plan and its own execution arc.
