@@ -123,5 +123,34 @@ void main() {
       final evts = await db.query('session_events', where: 'session_id = ?', whereArgs: ['s1']);
       expect(evts, isEmpty);
     });
+
+    test('listSessions returns all sessions ordered newest first', () async {
+      await sessions.insert(mkSession(
+        id: 's-old',
+        startedAt: DateTime.fromMillisecondsSinceEpoch(1000),
+      ));
+      await sessions.insert(mkSession(
+        id: 's-new',
+        startedAt: DateTime.fromMillisecondsSinceEpoch(9000),
+      ));
+      final list = await sessions.listSessions();
+      expect(list.map((s) => s.id), ['s-new', 's-old']);
+    });
+
+    test('listSessions respects limit', () async {
+      for (int i = 1; i <= 5; i++) {
+        await sessions.insert(mkSession(
+          id: 's-$i',
+          startedAt: DateTime.fromMillisecondsSinceEpoch(i * 1000),
+        ));
+      }
+      final list = await sessions.listSessions(limit: 3);
+      expect(list, hasLength(3));
+    });
+
+    test('listSessions returns empty list when no sessions', () async {
+      final list = await sessions.listSessions();
+      expect(list, isEmpty);
+    });
   });
 }

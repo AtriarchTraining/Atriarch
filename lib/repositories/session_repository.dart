@@ -86,6 +86,16 @@ class SessionRepository {
     return rows.map(SessionRecord.fromMap).toList();
   }
 
+  /// Returns sessions ordered by started_at descending (newest first).
+  Future<List<SessionRecord>> listSessions({int limit = 50}) async {
+    final rows = await _db.query(
+      'sessions',
+      orderBy: 'started_at DESC',
+      limit: limit,
+    );
+    return rows.map(SessionRecord.fromMap).toList();
+  }
+
   /// Returns the timestamp of the last event in a session, or null if none.
   Future<DateTime?> lastEventTimestamp(String sessionId) async {
     final rows = await _db.rawQuery(
