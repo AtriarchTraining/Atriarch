@@ -70,7 +70,7 @@ void main() {
       expect(find.textContaining('510MS'), findsOneWidget);
       expect(find.textContaining('310MS'), findsOneWidget);
       expect(find.textContaining('HIT%'), findsWidgets);
-      expect(find.textContaining('75'), findsWidgets);
+      expect(find.text('75'), findsOneWidget);
 
       final t2Offset = tester.getTopLeft(find.textContaining('NODE_T2'));
       final t1Offset = tester.getTopLeft(find.textContaining('NODE_T1'));

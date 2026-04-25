@@ -91,8 +91,7 @@ class HomeScreen extends StatelessWidget {
             label: 'TARGET_BREAKDOWN',
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(
-                  builder: (_) => const TargetBreakdownScreen()),
+              MaterialPageRoute(builder: (_) => const TargetBreakdownScreen()),
             ),
           ),
           const SizedBox(height: AtriarchSpacing.sm),
