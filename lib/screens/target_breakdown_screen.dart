@@ -49,7 +49,7 @@ class _TargetBreakdownScreenState extends State<TargetBreakdownScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(AtriarchSpacing.lg),
                 child: Text(
-                  'NO TARGET DATA AVAILABLE.\nComplete at least one drill to see breakdown.',
+                  'NO TARGET DATA AVAILABLE.',
                   style: AtriarchText.labelTiny(color: tokens.textTertiary),
                   textAlign: TextAlign.center,
                 ),
@@ -126,7 +126,7 @@ class _TargetRow extends StatelessWidget {
               child: Row(
                 children: [
                   _kv('RXN', '${b.avgReactionMs}MS', tokens),
-                  _kv('HIT', '$hitPct%', tokens),
+                  _kv('HIT%', '$hitPct', tokens),
                   _kv('ENG', '${b.totalEngagements}', tokens,
                       color: tokens.textTertiary),
                   if (b.hasViolations)
