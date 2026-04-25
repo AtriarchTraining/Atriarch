@@ -9,6 +9,7 @@ import '../theme/atriarch_theme.dart';
 import '../widgets/tactical/tactical_card.dart';
 import '../widgets/tactical/tactical_scaffold.dart';
 import 'session_detail_screen.dart';
+import 'trend_analytics_screen.dart';
 
 class RecentDrillsScreen extends StatefulWidget {
   const RecentDrillsScreen({super.key});
@@ -47,6 +48,14 @@ class _RecentDrillsScreenState extends State<RecentDrillsScreen> {
     final tokens = context.atriarch;
     return TacticalScaffold(
       title: 'SESSION_HISTORY',
+      trailing: IconButton(
+        icon: const Icon(Icons.show_chart),
+        tooltip: 'TREND',
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const TrendAnalyticsScreen()),
+        ),
+      ),
       body: FutureBuilder<List<_SessionItem>>(
         future: _future,
         builder: (context, snap) {
