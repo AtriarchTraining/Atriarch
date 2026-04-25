@@ -56,4 +56,13 @@ class DrillTemplateRepository {
       whereArgs: [id],
     );
   }
+
+  Future<void> rename(String id, String newName) async {
+    await _db.update(
+      'drill_templates',
+      {'name': newName},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
 }

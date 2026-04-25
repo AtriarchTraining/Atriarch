@@ -69,5 +69,23 @@ void main() {
       expect(await repo.getById('a'), isNull);
       await db.close();
     });
+
+    test('rename updates the template name', () async {
+      final db = await DatabaseHelper.openForTesting();
+      final repo = DrillTemplateRepository(db);
+      await repo.insert(_tpl('r1', 'Old Name'));
+      await repo.rename('r1', 'New Name');
+      final got = await repo.getById('r1');
+      expect(got!.name, 'New Name');
+      await db.close();
+    });
+
+    test('rename on unknown id is a no-op', () async {
+      final db = await DatabaseHelper.openForTesting();
+      final repo = DrillTemplateRepository(db);
+      await repo.rename('does-not-exist', 'Whatever');
+      expect(await repo.listAll(), isEmpty);
+      await db.close();
+    });
   });
 }
