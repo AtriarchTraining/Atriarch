@@ -223,6 +223,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Resets the onboarding flag so the wizard replays on next visit to
+  /// HomeScreen. Updates both prefs and the in-memory flag atomically.
+  Future<void> resetOnboarding() async {
+    _onboardingComplete = false;
+    await preferences?.setOnboardingComplete(false);
+    notifyListeners();
+  }
+
   /// Test-only direct setter for [onboardingComplete]. Production code
   /// should go through [hydratePreferences] + [markOnboardingComplete].
   @visibleForTesting

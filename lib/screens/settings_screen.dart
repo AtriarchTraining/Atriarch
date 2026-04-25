@@ -195,9 +195,7 @@ class SettingsScreen extends StatelessWidget {
                     onPressed: () async {
                       final state = context.read<AppState>();
                       final navigator = Navigator.of(context);
-                      await state.preferences?.setOnboardingComplete(false);
-                      // Mirror the in-memory flag so the home-screen gate
-                      // re-fires without waiting for a hydrate.
+                      await state.resetOnboarding();
                       if (!context.mounted) return;
                       navigator.pushReplacement(
                         MaterialPageRoute(

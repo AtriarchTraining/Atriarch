@@ -74,6 +74,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     );
     if (quit != true) return;
     if (!mounted) return;
+    // Mark complete so HomeScreen shows the dashboard rather than re-entering
+    // OnboardingFlow on every build. User can re-run from Settings.
+    await context.read<AppState>().markOnboardingComplete();
+    if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const HomeScreen()),

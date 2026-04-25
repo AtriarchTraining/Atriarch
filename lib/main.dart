@@ -84,6 +84,7 @@ class AtriarchApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeController>();
+    final appState = context.watch<AppState>();
     return MaterialApp(
       title: 'Atriarch',
       theme: buildAtriarchDarkTheme(),
@@ -98,6 +99,14 @@ class AtriarchApp extends StatelessWidget {
               initialData: BluetoothAdapterState.unknown,
               builder: (context, snapshot) {
                 if (snapshot.data == BluetoothAdapterState.on) {
+                  // First-time users go straight to HomeScreen (which renders
+                  // OnboardingFlow). Bypassing DeviceDiscoveryScreen here
+                  // ensures no BLE connection is made before PairTransmitterStep
+                  // runs its own scan — a prior connection stops the peripheral
+                  // from advertising and makes the scan find nothing.
+                  if (!appState.onboardingComplete) {
+                    return const HomeScreen();
+                  }
                   return const DeviceDiscoveryScreen();
                 }
                 return const BluetoothOffScreen();
