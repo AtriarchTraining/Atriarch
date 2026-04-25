@@ -18,7 +18,7 @@ class PresetChipStrip extends StatefulWidget {
 
   final DrillTemplateRepository drillTemplates;
   final void Function(DrillTemplate) onLoad;
-  final VoidCallback onSave;
+  final Future<void> Function() onSave;
   final PreferencesRepository preferences;
   final void Function(DrillTemplate?)? onSelectionChanged;
 
@@ -77,9 +77,9 @@ class _PresetChipStripState extends State<PresetChipStrip> {
     });
   }
 
-  void _onSavePressed() {
-    widget.onSave();
-    Future<void>.delayed(const Duration(milliseconds: 80), _refresh);
+  Future<void> _onSavePressed() async {
+    await widget.onSave();
+    if (mounted) _refresh();
   }
 
   @override

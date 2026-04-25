@@ -33,7 +33,7 @@ void main() {
           drillTemplates: repo,
           preferences: FakePreferencesRepository(),
           onLoad: (_) {},
-          onSave: () {},
+          onSave: () async {},
         ),
       ));
       await tester.pumpAndSettle();
@@ -50,7 +50,7 @@ void main() {
           drillTemplates: repo,
           preferences: FakePreferencesRepository(),
           onLoad: (_) {},
-          onSave: () {},
+          onSave: () async {},
         ),
       ));
       await tester.pumpAndSettle();
@@ -71,7 +71,7 @@ void main() {
           drillTemplates: repo,
           preferences: prefs,
           onLoad: (t) => loaded = t,
-          onSave: () {},
+          onSave: () async {},
         ),
       ));
       await tester.pumpAndSettle();
@@ -87,7 +87,7 @@ void main() {
           drillTemplates: repo,
           preferences: FakePreferencesRepository(),
           onLoad: (t) => loaded = t,
-          onSave: () {},
+          onSave: () async {},
         ),
       ));
       await tester.pumpAndSettle();
@@ -107,7 +107,7 @@ void main() {
           drillTemplates: repo,
           preferences: prefs,
           onLoad: (_) {},
-          onSave: () {},
+          onSave: () async {},
         ),
       ));
       await tester.pumpAndSettle();
@@ -126,7 +126,7 @@ void main() {
           drillTemplates: repo,
           preferences: prefs,
           onLoad: (_) {},
-          onSave: () {},
+          onSave: () async {},
         ),
       ));
       await tester.pumpAndSettle();
@@ -153,7 +153,7 @@ void main() {
           drillTemplates: repo,
           preferences: prefs,
           onLoad: (_) {},
-          onSave: () {},
+          onSave: () async {},
           onSelectionChanged: (t) => captured = t,
         ),
       ));
