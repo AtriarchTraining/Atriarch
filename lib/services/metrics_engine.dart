@@ -16,56 +16,80 @@ class MetricsEngine {
   MetricsEngine._();
 
   static ComputedMetrics compute(String sessionId, List<SessionEvent> events) {
+    // Per-targetId builder map supports Program B's concurrent multi-target
+    // activations. Program A still works correctly: when a new ACT for a
+    // target arrives while that same target has an open builder (which
+    // shouldn't happen in practice but is safe), the old builder is closed
+    // and a new one opened — same behaviour as before for Program A's
+    // sequential single-target-at-a-time pattern.
+    final activeBuilders = <int, _EngagementBuilder>{};
     final builders = <_EngagementBuilder>[];
-    _EngagementBuilder? pending;
+    // Track the most recent DONE timestamp seen across all targets so that
+    // precedingDelayMs is computed relative to the latest completion,
+    // regardless of which target completed last.
     DateTime? lastDoneAt;
     int engagementIndex = 0;
 
     for (final event in events) {
+      final tid = event.targetId ?? 0;
       switch (event.type) {
         case EventType.targetActivated:
-          if (pending != null) builders.add(pending);
+          // Close any pre-existing builder for this targetId. This handles the
+          // edge case where a target fires twice without a DONE between them
+          // (e.g. firmware sends a second CMD_ACTIVATE before EVT_COMPLETE).
+          final existing = activeBuilders.remove(tid);
+          if (existing != null) builders.add(existing);
           final delayMs = lastDoneAt != null
               ? (event.timestamp.millisecondsSinceEpoch -
                       lastDoneAt.millisecondsSinceEpoch)
                   .clamp(0, 0x7FFFFFFF)
               : 0;
-          pending = _EngagementBuilder(
-            targetId: event.targetId ?? 0,
+          activeBuilders[tid] = _EngagementBuilder(
+            targetId: tid,
             engagementIndex: engagementIndex++,
             activatedAt: event.timestamp,
             precedingDelayMs: delayMs,
             requiredHits: event.requiredHits ?? 1,
           );
         case EventType.hitDetected:
-          if (pending != null && pending.targetId == event.targetId) {
-            pending.hitTimestamps.add(event.timestamp);
-          }
+          activeBuilders[tid]?.hitTimestamps.add(event.timestamp);
         case EventType.noShootViolation:
-          if (pending != null && pending.targetId == event.targetId) {
-            pending.wasNoShoot = true;
+          if (activeBuilders[tid] != null) {
+            activeBuilders[tid]!.wasNoShoot = true;
           }
         case EventType.lateHit:
-          if (pending != null && pending.targetId == event.targetId) {
-            pending.hadLateHit = true;
+          if (activeBuilders[tid] != null) {
+            activeBuilders[tid]!.hadLateHit = true;
           }
         case EventType.targetComplete:
-          if (pending != null && pending.targetId == event.targetId) {
-            pending.completedAt = event.timestamp;
-            builders.add(pending);
-            lastDoneAt = event.timestamp;
-            pending = null;
+          final b = activeBuilders.remove(tid);
+          if (b != null) {
+            b.completedAt = event.timestamp;
+            builders.add(b);
+            // Update lastDoneAt to the most recent completion across all targets.
+            if (lastDoneAt == null ||
+                event.timestamp.isAfter(lastDoneAt)) {
+              lastDoneAt = event.timestamp;
+            }
           }
         case EventType.drillFinished:
-          if (pending != null) {
-            builders.add(pending);
-            pending = null;
+          // Flush all remaining open builders (concurrent targets mid-engagement).
+          for (final b in activeBuilders.values) {
+            builders.add(b);
           }
+          activeBuilders.clear();
         default:
           break;
       }
     }
-    if (pending != null) builders.add(pending);
+    // Flush any builders still open after the event stream ends (no FIN event).
+    for (final b in activeBuilders.values) {
+      builders.add(b);
+    }
+
+    // Sort by engagementIndex so output order is deterministic and matches
+    // the original activation-order guarantee from the single-pending design.
+    builders.sort((a, b) => a.engagementIndex.compareTo(b.engagementIndex));
 
     final actEvents =
         events.where((e) => e.type == EventType.targetActivated).toList();
@@ -120,7 +144,7 @@ class MetricsEngine {
       sessionId: sessionId,
       drawMs: drawMs,
       totalDurationMs: totalDurationMs,
-      totalRoundsFired: hitEvents.length, // NS events tracked separately, not counted as hits
+      totalRoundsFired: hitEvents.length,
       noShootCount:
           events.where((e) => e.type == EventType.noShootViolation).length,
       lateHitCount: events.where((e) => e.type == EventType.lateHit).length,
