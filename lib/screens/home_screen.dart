@@ -12,6 +12,7 @@ import '../widgets/tactical/tactical_section.dart';
 import '../widgets/tactical/tactical_status_chip.dart';
 import 'device_discovery_screen.dart';
 import 'onboarding/onboarding_flow.dart';
+import 'preset_manager_screen.dart';
 import 'program_a_setup_screen.dart';
 import 'program_b_setup_screen.dart';
 import 'recent_drills_screen.dart';
@@ -92,6 +93,14 @@ class HomeScreen extends StatelessWidget {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const TargetBreakdownScreen()),
+            ),
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalPrimaryButton(
+            label: 'PRESETS',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PresetManagerScreen()),
             ),
           ),
           const SizedBox(height: AtriarchSpacing.sm),
