@@ -33,7 +33,7 @@ class FakeDrillTemplateRepository implements DrillTemplateRepository {
   @override
   Future<void> rename(String id, String newName) async {
     final t = _byId[id];
-    if (t == null) return;
+    if (t == null) return; // mirrors SQLite zero-rows-affected no-op
     _byId[id] = DrillTemplate(
       id: t.id,
       shooterId: t.shooterId,
