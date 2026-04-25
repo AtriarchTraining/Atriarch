@@ -16,6 +16,7 @@ import 'program_a_setup_screen.dart';
 import 'program_b_setup_screen.dart';
 import 'recent_drills_screen.dart';
 import 'settings_screen.dart';
+import 'target_breakdown_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -83,6 +84,15 @@ class HomeScreen extends StatelessWidget {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const RecentDrillsScreen()),
+            ),
+          ),
+          const SizedBox(height: AtriarchSpacing.sm),
+          TacticalPrimaryButton(
+            label: 'TARGET_BREAKDOWN',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const TargetBreakdownScreen()),
             ),
           ),
           const SizedBox(height: AtriarchSpacing.sm),
