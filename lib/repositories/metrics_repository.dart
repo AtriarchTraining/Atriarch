@@ -1,6 +1,7 @@
 // lib/repositories/metrics_repository.dart
 import 'package:sqflite/sqflite.dart';
 import '../models/computed_metrics.dart';
+import '../models/target_breakdown.dart';
 
 /// Lightweight projection used exclusively by TrendAnalyticsScreen.
 /// Only carries the four trended fields — avoids loading engagement rows.
@@ -92,5 +93,24 @@ class MetricsRepository {
       limit: limit,
     );
     return rows.map(MetricSnapshot._fromRow).toList();
+  }
+
+  /// Cross-session GROUP BY aggregation over all target_engagements.
+  /// Returns targets sorted slowest-first (highest avg reaction time).
+  Future<List<TargetBreakdown>> aggregateByTarget() async {
+    final rows = await _db.rawQuery('''
+      SELECT
+        target_id,
+        AVG(reaction_ms)    AS avg_reaction_ms,
+        SUM(hits_landed)    AS total_hits,
+        SUM(required_hits)  AS total_required,
+        SUM(was_no_shoot)   AS no_shoot_count,
+        SUM(had_late_hit)   AS late_hit_count,
+        COUNT(*)            AS total_engagements
+      FROM target_engagements
+      GROUP BY target_id
+      ORDER BY avg_reaction_ms DESC
+    ''');
+    return rows.map(TargetBreakdown.fromMap).toList();
   }
 }
