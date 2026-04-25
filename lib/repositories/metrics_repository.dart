@@ -2,6 +2,32 @@
 import 'package:sqflite/sqflite.dart';
 import '../models/computed_metrics.dart';
 
+/// Lightweight projection used exclusively by TrendAnalyticsScreen.
+/// Only carries the four trended fields — avoids loading engagement rows.
+class MetricSnapshot {
+  final String sessionId;
+  final int? drawMs;
+  final int? avgReactionMs;
+  final int? avgSplitMs;
+  final int? avgTransitionMs;
+
+  const MetricSnapshot({
+    required this.sessionId,
+    this.drawMs,
+    this.avgReactionMs,
+    this.avgSplitMs,
+    this.avgTransitionMs,
+  });
+
+  factory MetricSnapshot._fromRow(Map<String, Object?> m) => MetricSnapshot(
+        sessionId: m['session_id'] as String,
+        drawMs: m['draw_ms'] as int?,
+        avgReactionMs: m['avg_reaction_ms'] as int?,
+        avgSplitMs: m['avg_split_ms'] as int?,
+        avgTransitionMs: m['avg_transition_ms'] as int?,
+      );
+}
+
 class MetricsRepository {
   final Database _db;
   MetricsRepository(this._db);
@@ -48,5 +74,23 @@ class MetricsRepository {
           .map(TargetEngagementMetrics.fromMap)
           .toList(),
     );
+  }
+
+  /// Returns up to [limit] sessions ordered newest-first (rowid DESC).
+  /// Only fetches the four trended columns — no engagement join needed.
+  Future<List<MetricSnapshot>> listRecentMetrics({int limit = 20}) async {
+    final rows = await _db.query(
+      'session_metrics',
+      columns: [
+        'session_id',
+        'draw_ms',
+        'avg_reaction_ms',
+        'avg_split_ms',
+        'avg_transition_ms',
+      ],
+      orderBy: 'rowid DESC',
+      limit: limit,
+    );
+    return rows.map(MetricSnapshot._fromRow).toList();
   }
 }
