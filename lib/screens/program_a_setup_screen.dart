@@ -6,11 +6,13 @@ import '../models/drill_config.dart';
 import '../models/drill_template.dart';
 import '../models/target_group.dart';
 import '../models/target_unit.dart';
+import '../repositories/drill_template_repository.dart';
 import '../services/config_hasher.dart';
+import '../services/preferences_repository.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
 import '../util/target_name_resolver.dart';
-import '../widgets/preset_row.dart';
+import '../widgets/preset_chip_strip.dart';
 import '../widgets/shooter_chip.dart';
 import '../widgets/tactical/arming_failed_banner.dart';
 import '../widgets/tactical/group_node_card.dart';
@@ -46,6 +48,7 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
   int? selectedGroupIndex;
   DrillConfig? _lastConfig;
   AppState? _boundState;
+  DrillTemplate? _selectedTemplate;
 
   @override
   void initState() {
@@ -118,7 +121,12 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     );
   }
 
-  void _startDrill() {
+  Future<void> _startDrill() async {
+    if (_selectedTemplate != null) {
+      await context
+          .read<PreferencesRepository>()
+          .setDefaultPresetId(_selectedTemplate!.id);
+    }
     final config = _buildConfig();
     if (config == null) return;
     _lastConfig = config;
@@ -330,17 +338,15 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
           const SizedBox(height: AtriarchSpacing.sm),
           _header(context),
           const SizedBox(height: AtriarchSpacing.md),
-          Consumer<AppState>(
-            builder: (_, state, __) {
-              final repo = state.drillTemplates;
-              if (repo == null) return const SizedBox.shrink();
-              return PresetRow(
-                drillTemplates: repo,
-                currentConfig: _currentConfigSnapshot,
-                onLoad: _applyPreset,
-                onSave: _promptSavePresetName,
-              );
+          PresetChipStrip(
+            drillTemplates: context.read<DrillTemplateRepository>(),
+            preferences: context.read<PreferencesRepository>(),
+            onLoad: (t) {
+              _applyPreset(t);
+              setState(() => _selectedTemplate = t);
             },
+            onSave: _promptSavePresetName,
+            onSelectionChanged: (t) => setState(() => _selectedTemplate = t),
           ),
           const SizedBox(height: AtriarchSpacing.lg),
           const TacticalSection(code: 'PARAM_01', trailing: 'TIMING'),
