@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../models/drill_config.dart';
 import '../models/drill_template.dart';
 import '../repositories/drill_template_repository.dart';
 import '../services/preferences_repository.dart';
@@ -11,18 +10,16 @@ class PresetChipStrip extends StatefulWidget {
   const PresetChipStrip({
     super.key,
     required this.drillTemplates,
-    required this.currentConfig,
     required this.onLoad,
     required this.onSave,
-    this.preferences,
+    required this.preferences,
     this.onSelectionChanged,
   });
 
   final DrillTemplateRepository drillTemplates;
-  final DrillConfig Function() currentConfig;
   final void Function(DrillTemplate) onLoad;
   final VoidCallback onSave;
-  final PreferencesRepository? preferences;
+  final PreferencesRepository preferences;
   final void Function(DrillTemplate?)? onSelectionChanged;
 
   @override
@@ -43,10 +40,7 @@ class _PresetChipStripState extends State<PresetChipStrip> {
 
   Future<void> _load() async {
     final templates = await widget.drillTemplates.listAll();
-    String? lastId;
-    if (widget.preferences != null) {
-      lastId = await widget.preferences!.getDefaultPresetId();
-    }
+    final String? lastId = await widget.preferences.getDefaultPresetId();
     if (!mounted) return;
     DrillTemplate? selected;
     bool fromPrefs = false;

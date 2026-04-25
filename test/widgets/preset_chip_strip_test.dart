@@ -31,7 +31,7 @@ void main() {
       await tester.pumpWidget(_wrap(
         PresetChipStrip(
           drillTemplates: repo,
-          currentConfig: () => DrillConfig(programType: ProgramType.programA),
+          preferences: FakePreferencesRepository(),
           onLoad: (_) {},
           onSave: () {},
         ),
@@ -48,7 +48,7 @@ void main() {
       await tester.pumpWidget(_wrap(
         PresetChipStrip(
           drillTemplates: repo,
-          currentConfig: () => DrillConfig(programType: ProgramType.programA),
+          preferences: FakePreferencesRepository(),
           onLoad: (_) {},
           onSave: () {},
         ),
@@ -70,7 +70,6 @@ void main() {
         PresetChipStrip(
           drillTemplates: repo,
           preferences: prefs,
-          currentConfig: () => DrillConfig(programType: ProgramType.programA),
           onLoad: (t) => loaded = t,
           onSave: () {},
         ),
@@ -86,7 +85,7 @@ void main() {
       await tester.pumpWidget(_wrap(
         PresetChipStrip(
           drillTemplates: repo,
-          currentConfig: () => DrillConfig(programType: ProgramType.programA),
+          preferences: FakePreferencesRepository(),
           onLoad: (t) => loaded = t,
           onSave: () {},
         ),
@@ -107,13 +106,59 @@ void main() {
         PresetChipStrip(
           drillTemplates: repo,
           preferences: prefs,
-          currentConfig: () => DrillConfig(programType: ProgramType.programA),
           onLoad: (_) {},
           onSave: () {},
         ),
       ));
       await tester.pumpAndSettle();
       expect(find.textContaining('LOADED'), findsOneWidget);
+    });
+
+    testWidgets('banner resets when a different chip is tapped manually',
+        (tester) async {
+      final repo = FakeDrillTemplateRepository();
+      await repo.insert(_tpl('a', 'ALPHA'));
+      await repo.insert(_tpl('b', 'BETA'));
+      final prefs = FakePreferencesRepository();
+      await prefs.setDefaultPresetId('a');
+      await tester.pumpWidget(_wrap(
+        PresetChipStrip(
+          drillTemplates: repo,
+          preferences: prefs,
+          onLoad: (_) {},
+          onSave: () {},
+        ),
+      ));
+      await tester.pumpAndSettle();
+      // LOADED banner should be visible after auto-select
+      expect(find.textContaining('LOADED'), findsOneWidget);
+      // Tap the other chip
+      await tester.tap(find.text('BETA'));
+      await tester.pump();
+      // Banner should be gone after manual selection
+      expect(find.textContaining('LOADED'), findsNothing);
+    });
+
+    testWidgets('onSelectionChanged fires with the auto-selected template',
+        (tester) async {
+      final repo = FakeDrillTemplateRepository();
+      final expectedTemplate = _tpl('b', 'BETA');
+      await repo.insert(_tpl('a', 'ALPHA'));
+      await repo.insert(expectedTemplate);
+      final prefs = FakePreferencesRepository();
+      await prefs.setDefaultPresetId('b');
+      DrillTemplate? captured;
+      await tester.pumpWidget(_wrap(
+        PresetChipStrip(
+          drillTemplates: repo,
+          preferences: prefs,
+          onLoad: (_) {},
+          onSave: () {},
+          onSelectionChanged: (t) => captured = t,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(captured?.id, expectedTemplate.id);
     });
   });
 }
