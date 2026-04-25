@@ -72,7 +72,7 @@ class _PresetManagerScreenState extends State<PresetManagerScreen> {
                       ),
                     );
                   }
-                  _refresh();
+                  if (mounted) _refresh();
                 },
               );
             },
@@ -158,6 +158,7 @@ class _SwipeablePresetRowState extends State<_SwipeablePresetRow>
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (details.delta.dx.abs() < details.delta.dy.abs()) return;
     final delta = details.primaryDelta ?? 0;
     final currentOffset = _open ? -_actionWidth : 0.0;
     final newOffset = (currentOffset + delta).clamp(-_actionWidth, 0.0);
@@ -205,7 +206,7 @@ class _SwipeablePresetRowState extends State<_SwipeablePresetRow>
     );
     if (newName == null || newName.isEmpty) return;
     await widget.repo.rename(widget.template.id, newName);
-    widget.onRefresh();
+    if (mounted) widget.onRefresh();
   }
 
   Future<void> _showDeleteDialog(BuildContext context) async {
@@ -228,7 +229,7 @@ class _SwipeablePresetRowState extends State<_SwipeablePresetRow>
     );
     if (confirmed != true) return;
     await widget.repo.delete(widget.template.id);
-    widget.onRefresh();
+    if (mounted) widget.onRefresh();
   }
 
   @override
