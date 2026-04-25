@@ -18,6 +18,7 @@ import 'program_b_setup_screen.dart';
 import 'recent_drills_screen.dart';
 import 'settings_screen.dart';
 import 'target_breakdown_screen.dart';
+import 'target_setup_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -43,13 +44,10 @@ class HomeScreen extends StatelessWidget {
             code: 'TARGET_SETUP',
             title: 'TARGET SETUP',
             subtitle: 'Scan the fleet, identify units, mark no-shoots.',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Target Discovery screen not built yet.'),
-                ),
-              );
-            },
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TargetSetupScreen()),
+            ),
           ),
           const SizedBox(height: AtriarchSpacing.sm),
           _HomeCard(
