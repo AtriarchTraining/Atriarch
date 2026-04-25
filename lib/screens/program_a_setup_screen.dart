@@ -122,11 +122,11 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
   }
 
   Future<void> _startDrill() async {
+    final prefs = context.read<PreferencesRepository>();
     if (_selectedTemplate != null) {
-      await context
-          .read<PreferencesRepository>()
-          .setDefaultPresetId(_selectedTemplate!.id);
+      await prefs.setDefaultPresetId(_selectedTemplate!.id);
     }
+    if (!mounted) return;
     final config = _buildConfig();
     if (config == null) return;
     _lastConfig = config;
