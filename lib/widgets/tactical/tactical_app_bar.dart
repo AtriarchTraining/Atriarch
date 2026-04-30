@@ -24,9 +24,7 @@ class TacticalAppBar extends StatelessWidget
     final tokens = context.atriarch;
     final canPop = Navigator.of(context).canPop();
     final showBackEffective = showBack || canPop;
-
     return Container(
-      height: 64,
       decoration: BoxDecoration(
         color: tokens.bgElevated,
         border: Border(
@@ -36,36 +34,47 @@ class TacticalAppBar extends StatelessWidget
           ),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: AtriarchSpacing.lg),
-      child: Row(
-        children: [
-          IconButton(
-            icon: Icon(
-              showBackEffective ? Icons.arrow_back : Icons.menu,
-              color: tokens.statusHit,
-            ),
-            onPressed: onMenuTap ??
-                (showBackEffective
-                    ? () => Navigator.of(context).maybePop()
-                    : null),
-          ),
-          const SizedBox(width: AtriarchSpacing.sm),
-          Expanded(
-            child: Text(
-              title.toUpperCase(),
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(
+      child: SafeArea(
+        bottom: false,
+        left: false,
+        right: false,
+        child: SizedBox(
+          height: 64,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AtriarchSpacing.lg),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: Icon(
+                    showBackEffective ? Icons.arrow_back : Icons.menu,
                     color: tokens.statusHit,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 3.2,
                   ),
-              overflow: TextOverflow.ellipsis,
+                  onPressed: onMenuTap ??
+                      (showBackEffective
+                          ? () => Navigator.of(context).maybePop()
+                          : null),
+                ),
+                const SizedBox(width: AtriarchSpacing.sm),
+                Expanded(
+                  child: Text(
+                    title.toUpperCase(),
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(
+                          color: tokens.statusHit,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 3.2,
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (trailing != null) trailing!,
+              ],
             ),
           ),
-          if (trailing != null) trailing!,
-        ],
+        ),
       ),
     );
   }

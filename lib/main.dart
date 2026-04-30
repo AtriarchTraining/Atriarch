@@ -40,8 +40,10 @@ Future<void> main() async {
     sessions: sessionRepo,
     preferences: preferences,
   );
-  final audio = AudioService();
-  await audio.init();
+  // TODO(jeremy): swap back to AudioService() once ready.mp3 is the real
+  // 2-note bell — current placeholder causes just_audio 0.9.x to crash
+  // natively on iOS 26 (PAC failure in AVFoundation delegate callback).
+  final AudioService audio = NoopAudioService();
   final tts = await FlutterTtsPort.create();
   final themeController = ThemeController();
 

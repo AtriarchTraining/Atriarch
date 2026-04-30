@@ -77,6 +77,10 @@ class AudioService {
   final AudioPlayerPort? _player;
   bool _assetLoaded = false;
   bool _sessionConfigured = false;
+  // Set true when setAsset fails so we skip playback and don't touch the
+  // disposed native player (prevents stale AVFoundation callbacks crashing
+  // on just_audio 0.9.x / iOS 26).
+  bool _playerDisposed = false;
 
   /// Configure the iOS/macOS audio session category to `ambient` (respects
   /// the silent switch) and preload the ready asset. Best-effort: never
@@ -118,16 +122,21 @@ class AudioService {
   }
 
   Future<void> _preloadAsset() async {
-    if (_assetLoaded) return;
+    if (_assetLoaded || _playerDisposed) return;
     final player = _player;
     if (player == null) return;
     try {
       await player.setAsset(readyAssetPath);
       _assetLoaded = true;
     } catch (e) {
-      // Placeholder MP3 is 0 bytes in dev — this is expected until Jeremy
-      // drops in the real audio. Don't crash the app; just log.
       debugPrint('AudioService: preload failed ($readyAssetPath): $e');
+      // Dispose the native player immediately so no stale AVFoundation
+      // callbacks fire after the failure (causes EXC_BAD_ACCESS on iOS 26
+      // with just_audio 0.9.x). Mark disposed so playReady is a no-op.
+      _playerDisposed = true;
+      try {
+        await player.dispose();
+      } catch (_) {}
     }
   }
 
@@ -136,7 +145,7 @@ class AudioService {
   /// in try/catch and logs instead of throwing.
   Future<void> playReady({required double volume}) async {
     final player = _player;
-    if (player == null) return;
+    if (player == null || _playerDisposed) return;
     final clamped = volume.clamp(0.0, 1.0).toDouble();
     try {
       if (!_assetLoaded) {
@@ -155,7 +164,8 @@ class AudioService {
 
   Future<void> dispose() async {
     final player = _player;
-    if (player == null) return;
+    if (player == null || _playerDisposed) return;
+    _playerDisposed = true;
     try {
       await player.dispose();
     } catch (_) {
