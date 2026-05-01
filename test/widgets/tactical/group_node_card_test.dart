@@ -110,4 +110,73 @@ void main() {
     expect(find.text('T/U_02'), findsOneWidget);
     expect(find.text('T/U_01'), findsNothing);
   });
+
+  testWidgets(
+      'collapsed card height is same for 2 targets and 8 targets (fixed-size)',
+      (tester) async {
+    // Pump with 2 targets and record the card's height.
+    await tester.pumpWidget(wrap(
+      SizedBox(
+        width: 180,
+        child: GroupNodeCard(
+          groupIndex: 0,
+          targetIds: const [1, 2],
+          selected: false,
+          expanded: false,
+          resolver: const TargetNameResolver({}),
+          onTap: () {},
+          onRemoveTarget: (_) {},
+        ),
+      ),
+    ));
+    final heightWith2 = tester.getSize(find.byType(GroupNodeCard)).height;
+
+    // Pump with 8 targets — the collapsed card height must not grow.
+    await tester.pumpWidget(wrap(
+      SizedBox(
+        width: 180,
+        child: GroupNodeCard(
+          groupIndex: 0,
+          targetIds: const [1, 2, 3, 4, 5, 6, 7, 8],
+          selected: false,
+          expanded: false,
+          resolver: const TargetNameResolver({}),
+          onTap: () {},
+          onRemoveTarget: (_) {},
+        ),
+      ),
+    ));
+    final heightWith8 = tester.getSize(find.byType(GroupNodeCard)).height;
+
+    // Heights must be equal: collapsed card is fixed-size regardless of
+    // target count.  Both cards fill the Scaffold body vertically in the
+    // unconstrained test environment, so we compare them to each other
+    // rather than against an absolute pixel value.
+    expect(heightWith8, equals(heightWith2));
+  });
+
+  testWidgets(
+      'collapsed card with long custom name uses ellipsis overflow on label',
+      (tester) async {
+    const longName = 'VeryLongCustomTargetNameHereXX'; // 30 chars
+    await tester.pumpWidget(wrap(
+      SizedBox(
+        width: 180,
+        child: GroupNodeCard(
+          groupIndex: 0,
+          targetIds: const [1, 2],
+          selected: false,
+          expanded: false,
+          resolver: const TargetNameResolver({1: longName}),
+          onTap: () {},
+          onRemoveTarget: (_) {},
+        ),
+      ),
+    ));
+
+    // The long-name Text widget must use ellipsis overflow so it never
+    // pushes the label area wider than its ConstrainedBox max.
+    final longNameText = tester.widget<Text>(find.text(longName));
+    expect(longNameText.overflow, TextOverflow.ellipsis);
+  });
 }

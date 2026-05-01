@@ -95,19 +95,10 @@ class GroupNodeCard extends StatelessWidget {
                                 )
                                 .toList(),
                           )
-                        : Wrap(
-                            spacing: AtriarchSpacing.sm,
-                            runSpacing: 4,
-                            children: targetIds
-                                .map(
-                                  (id) => Text(
-                                    resolver.display(id),
-                                    style: AtriarchText.labelTiny(
-                                      color: tokens.textPrimary,
-                                    ),
-                                  ),
-                                )
-                                .toList(),
+                        : _CollapsedLabels(
+                            targetIds: targetIds,
+                            resolver: resolver,
+                            tokens: tokens,
                           ),
                   const SizedBox(height: AtriarchSpacing.sm),
                   Row(
@@ -142,6 +133,74 @@ class GroupNodeCard extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Collapsed unit-label list capped at 2 visual lines.
+///
+/// Strategy: render up to [_kMaxVisible] labels in a [Wrap]. If there are more
+/// targets than [_kMaxVisible], append a `…` text chip so the user knows there
+/// are hidden labels (visible on expand). Each label is width-constrained so a
+/// long custom name truncates with ellipsis rather than expanding the card.
+/// A [LimitedBox] + [ClipRect] hard-caps the rendered height to [_kMaxHeight]
+/// so the collapsed card height never grows regardless of target count.
+class _CollapsedLabels extends StatelessWidget {
+  /// Max labels shown before the `…` ellipsis chip.  4 fits two rows of two
+  /// typical short labels (e.g. `T/U_01`) on a ~180px-wide grid cell.
+  static const int _kMaxVisible = 4;
+
+  /// Hard pixel cap: 2 lines × 12px line-height + 4px runSpacing + 4px slack.
+  static const double _kMaxHeight = 32;
+
+  /// Max width for each individual label so long custom names truncate.
+  static const double _kMaxLabelWidth = 80;
+
+  final List<int> targetIds;
+  final TargetNameResolver resolver;
+  final AtriarchTokens tokens;
+
+  const _CollapsedLabels({
+    required this.targetIds,
+    required this.resolver,
+    required this.tokens,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasOverflow = targetIds.length > _kMaxVisible;
+    final visibleIds =
+        hasOverflow ? targetIds.sublist(0, _kMaxVisible) : targetIds;
+
+    final labelStyle = AtriarchText.labelTiny(color: tokens.textPrimary);
+
+    final children = <Widget>[
+      for (final id in visibleIds)
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _kMaxLabelWidth),
+          child: Text(
+            resolver.display(id),
+            style: labelStyle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      if (hasOverflow)
+        Text(
+          '…',
+          style: labelStyle,
+        ),
+    ];
+
+    return ClipRect(
+      child: LimitedBox(
+        maxHeight: _kMaxHeight,
+        child: Wrap(
+          spacing: AtriarchSpacing.sm,
+          runSpacing: 4,
+          children: children,
         ),
       ),
     );
