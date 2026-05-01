@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/target_breakdown.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
+import '../util/target_name_resolver.dart';
 import '../widgets/tactical/tactical_card.dart';
 import '../widgets/tactical/tactical_scaffold.dart';
 import '../widgets/tactical/tactical_section.dart';
@@ -94,6 +95,8 @@ class _TargetRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.atriarch;
+    final resolver =
+        TargetNameResolver(context.read<AppState>().targetNames);
     final b = breakdown;
 
     final Color accent;
@@ -114,7 +117,7 @@ class _TargetRow extends StatelessWidget {
           SizedBox(
             width: 80,
             child: Text(
-              'NODE_T${b.targetId}',
+              resolver.display(b.targetId),
               style: AtriarchText.labelTiny(color: tokens.statusHit),
             ),
           ),

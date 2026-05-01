@@ -6,6 +6,7 @@ import '../models/computed_metrics.dart';
 import '../models/session_record.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
+import '../util/target_name_resolver.dart';
 import '../widgets/tactical/tactical_card.dart';
 import '../widgets/tactical/tactical_hud_tile.dart';
 import '../widgets/tactical/tactical_scaffold.dart';
@@ -244,6 +245,8 @@ class _EngagementRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.atriarch;
+    final resolver =
+        TargetNameResolver(context.read<AppState>().targetNames);
     final e = engagement;
     return TacticalCard(
       accent: e.wasNoShoot ? tokens.statusViolation : tokens.border,
@@ -252,7 +255,7 @@ class _EngagementRow extends StatelessWidget {
           SizedBox(
             width: 76,
             child: Text(
-              'NODE_T${e.targetId}',
+              resolver.display(e.targetId),
               style: AtriarchText.labelTiny(color: tokens.statusHit),
             ),
           ),

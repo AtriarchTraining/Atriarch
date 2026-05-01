@@ -65,15 +65,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('NODE_T2'), findsOneWidget);
-      expect(find.textContaining('NODE_T1'), findsOneWidget);
+      expect(find.textContaining('T/U_02'), findsOneWidget);
+      expect(find.textContaining('T/U_01'), findsOneWidget);
       expect(find.textContaining('510MS'), findsOneWidget);
       expect(find.textContaining('310MS'), findsOneWidget);
       expect(find.textContaining('HIT%'), findsWidgets);
       expect(find.text('75'), findsOneWidget);
 
-      final t2Offset = tester.getTopLeft(find.textContaining('NODE_T2'));
-      final t1Offset = tester.getTopLeft(find.textContaining('NODE_T1'));
+      final t2Offset = tester.getTopLeft(find.textContaining('T/U_02'));
+      final t1Offset = tester.getTopLeft(find.textContaining('T/U_01'));
       expect(t2Offset.dy, lessThan(t1Offset.dy));
     });
 
