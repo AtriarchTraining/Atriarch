@@ -16,8 +16,15 @@ import '../widgets/tactical/tactical_scaffold.dart';
 import '../widgets/tactical/tactical_section.dart';
 import 'home_screen.dart';
 
-class ResultsScreen extends StatelessWidget {
+class ResultsScreen extends StatefulWidget {
   const ResultsScreen({super.key});
+
+  @override
+  State<ResultsScreen> createState() => _ResultsScreenState();
+}
+
+class _ResultsScreenState extends State<ResultsScreen> {
+  int? _expandedTargetId;
 
   @override
   Widget build(BuildContext context) {
@@ -130,6 +137,14 @@ class ResultsScreen extends StatelessWidget {
                 id: entry.key,
                 stats: entry.value,
                 resolver: resolver,
+                expanded: _expandedTargetId == entry.key,
+                onTap: () => setState(() {
+                  _expandedTargetId =
+                      _expandedTargetId == entry.key ? null : entry.key;
+                }),
+                events: events
+                    .where((e) => e.targetId == entry.key)
+                    .toList(),
               ),
             ),
           ),
@@ -250,56 +265,88 @@ class _PerTargetRow extends StatelessWidget {
   final int id;
   final _TargetStats stats;
   final TargetNameResolver resolver;
+  final bool expanded;
+  final VoidCallback onTap;
+  final List<SessionEvent> events;
   const _PerTargetRow({
     required this.id,
     required this.stats,
     required this.resolver,
+    required this.expanded,
+    required this.onTap,
+    required this.events,
   });
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.atriarch;
-    return TacticalCard(
-      accent: tokens.border,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 96,
-            child: Text(
-              resolver.display(id),
-              style: AtriarchText.labelTiny(color: tokens.statusHit),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: onTap,
+          child: TacticalCard(
+            accent: tokens.border,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 96,
+                  child: Text(
+                    resolver.display(id),
+                    style: AtriarchText.labelTiny(color: tokens.statusHit),
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _kv('HITS', '${stats.hits}', tokens),
+                        _kv('DONE', '${stats.completions}', tokens),
+                        _kv('AVG', '${stats.avgCompletionMs.toInt()}MS', tokens),
+                        _kv(
+                          'NS',
+                          '${stats.noShoots}',
+                          tokens,
+                          color: stats.noShoots > 0
+                              ? tokens.statusViolation
+                              : tokens.textPrimary,
+                        ),
+                        _kv(
+                          'LATE',
+                          '${stats.lateHits}',
+                          tokens,
+                          color: stats.lateHits > 0
+                              ? tokens.statusLate
+                              : tokens.textPrimary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Icon(
+                  expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 16,
+                  color: tokens.textTertiary,
+                ),
+              ],
             ),
           ),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _kv('HITS', '${stats.hits}', tokens),
-                  _kv('DONE', '${stats.completions}', tokens),
-                  _kv('AVG', '${stats.avgCompletionMs.toInt()}MS', tokens),
-                  _kv(
-                    'NS',
-                    '${stats.noShoots}',
-                    tokens,
-                    color: stats.noShoots > 0
-                        ? tokens.statusViolation
-                        : tokens.textPrimary,
-                  ),
-                  _kv(
-                    'LATE',
-                    '${stats.lateHits}',
-                    tokens,
-                    color: stats.lateHits > 0
-                        ? tokens.statusLate
-                        : tokens.textPrimary,
-                  ),
-                ],
-              ),
+        ),
+        if (expanded)
+          Padding(
+            padding: const EdgeInsets.only(
+              left: AtriarchSpacing.lg,
+              top: AtriarchSpacing.sm,
+              bottom: AtriarchSpacing.sm,
+            ),
+            child: Column(
+              children: events
+                  .map((e) => _EventRow(event: e, resolver: resolver))
+                  .toList(),
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 
