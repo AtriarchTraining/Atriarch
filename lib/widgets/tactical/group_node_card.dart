@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../theme/atriarch_theme.dart';
+import '../../util/target_name_resolver.dart';
 
 class GroupNodeCard extends StatelessWidget {
   final int groupIndex; // 0-based
   final List<int> targetIds;
   final bool selected;
+  final bool expanded;
+  final TargetNameResolver resolver;
   final VoidCallback onTap;
   final ValueChanged<int> onRemoveTarget;
 
@@ -13,6 +16,8 @@ class GroupNodeCard extends StatelessWidget {
     required this.groupIndex,
     required this.targetIds,
     required this.selected,
+    required this.expanded,
+    required this.resolver,
     required this.onTap,
     required this.onRemoveTarget,
   });
@@ -72,23 +77,38 @@ class GroupNodeCard extends StatelessWidget {
                   ),
                   const SizedBox(height: AtriarchSpacing.md),
                   if (targetIds.isNotEmpty)
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: targetIds
-                          .map(
-                            (id) => InputChip(
-                              label: Text('T$id'),
-                              onDeleted: () => onRemoveTarget(id),
-                              deleteIcon: Icon(
-                                Icons.close,
-                                size: 14,
-                                color: tokens.statusViolation,
-                              ),
-                            ),
+                    expanded
+                        ? Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            children: targetIds
+                                .map(
+                                  (id) => InputChip(
+                                    label: Text(resolver.display(id)),
+                                    onDeleted: () => onRemoveTarget(id),
+                                    deleteIcon: Icon(
+                                      Icons.close,
+                                      size: 14,
+                                      color: tokens.statusViolation,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
                           )
-                          .toList(),
-                    ),
+                        : Wrap(
+                            spacing: AtriarchSpacing.sm,
+                            runSpacing: 4,
+                            children: targetIds
+                                .map(
+                                  (id) => Text(
+                                    resolver.display(id),
+                                    style: AtriarchText.labelTiny(
+                                      color: tokens.textPrimary,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
                   const SizedBox(height: AtriarchSpacing.sm),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,

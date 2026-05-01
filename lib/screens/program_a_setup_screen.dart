@@ -46,6 +46,7 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
 
   List<TargetGroup> groups = List.generate(5, (i) => TargetGroup(id: i + 1));
   int? selectedGroupIndex;
+  int? _expandedGroupIndex;
   DrillConfig? _lastConfig;
   AppState? _boundState;
   DrillTemplate? _selectedTemplate;
@@ -405,32 +406,45 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
             trailing: 'ALLOCATION_GRID',
           ),
           const SizedBox(height: AtriarchSpacing.sm),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: AtriarchSpacing.sm,
-            crossAxisSpacing: AtriarchSpacing.sm,
-            childAspectRatio: 1.6,
-            children: List.generate(
-              5,
-              (i) => GestureDetector(
-                onLongPress: () {
-                  if (groups[i].targetIds.isEmpty) return;
-                  _openTargetActions(
-                    context,
-                    groups[i].targetIds.first,
-                  );
-                },
-                child: GroupNodeCard(
-                  groupIndex: i,
-                  targetIds: groups[i].targetIds,
-                  selected: selectedGroupIndex == i,
-                  onTap: () => setState(() => selectedGroupIndex = i),
-                  onRemoveTarget: (id) => _removeTargetFromGroup(i, id),
+          Builder(
+            builder: (context) {
+              final resolver = TargetNameResolver(
+                context.read<AppState>().targetNames,
+              );
+              return GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: AtriarchSpacing.sm,
+                crossAxisSpacing: AtriarchSpacing.sm,
+                childAspectRatio: 1.6,
+                children: List.generate(
+                  5,
+                  (i) => GestureDetector(
+                    onLongPress: () {
+                      if (groups[i].targetIds.isEmpty) return;
+                      _openTargetActions(
+                        context,
+                        groups[i].targetIds.first,
+                      );
+                    },
+                    child: GroupNodeCard(
+                      groupIndex: i,
+                      targetIds: groups[i].targetIds,
+                      selected: selectedGroupIndex == i,
+                      expanded: _expandedGroupIndex == i,
+                      resolver: resolver,
+                      onTap: () => setState(() {
+                        selectedGroupIndex = i;
+                        _expandedGroupIndex =
+                            _expandedGroupIndex == i ? null : i;
+                      }),
+                      onRemoveTarget: (id) => _removeTargetFromGroup(i, id),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
           const SizedBox(height: AtriarchSpacing.xl),
           const TacticalSection(
