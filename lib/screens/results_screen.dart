@@ -7,6 +7,7 @@ import '../models/session_event.dart';
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
 import '../util/drill_log_codec.dart';
+import '../util/target_name_resolver.dart';
 import '../widgets/drill_share_sheet.dart';
 import '../widgets/tactical/tactical_card.dart';
 import '../widgets/tactical/tactical_hud_tile.dart';
@@ -21,6 +22,7 @@ class ResultsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final resolver = TargetNameResolver(state.targetNames);
     final session = state.currentSession;
 
     if (session == null) {
@@ -124,7 +126,11 @@ class ResultsScreen extends StatelessWidget {
           ...perTarget.entries.map(
             (entry) => Padding(
               padding: const EdgeInsets.only(bottom: AtriarchSpacing.sm),
-              child: _PerTargetRow(id: entry.key, stats: entry.value),
+              child: _PerTargetRow(
+                id: entry.key,
+                stats: entry.value,
+                resolver: resolver,
+              ),
             ),
           ),
           if (metrics != null) ...[
@@ -167,7 +173,7 @@ class ResultsScreen extends StatelessWidget {
           const SizedBox(height: AtriarchSpacing.xl),
           const TacticalSection(code: 'SUMMARY_03', trailing: 'EVENT_LOG'),
           const SizedBox(height: AtriarchSpacing.sm),
-          ...events.map((e) => _EventRow(event: e)),
+          ...events.map((e) => _EventRow(event: e, resolver: resolver)),
           const SizedBox(height: AtriarchSpacing.xl),
           TacticalPrimaryButton(
             label: 'share',
@@ -243,7 +249,12 @@ class _TargetStats {
 class _PerTargetRow extends StatelessWidget {
   final int id;
   final _TargetStats stats;
-  const _PerTargetRow({required this.id, required this.stats});
+  final TargetNameResolver resolver;
+  const _PerTargetRow({
+    required this.id,
+    required this.stats,
+    required this.resolver,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -253,9 +264,9 @@ class _PerTargetRow extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 72,
+            width: 96,
             child: Text(
-              'NODE_T$id',
+              resolver.display(id),
               style: AtriarchText.labelTiny(color: tokens.statusHit),
             ),
           ),
@@ -316,31 +327,34 @@ class _PerTargetRow extends StatelessWidget {
 
 class _EventRow extends StatelessWidget {
   final SessionEvent event;
-  const _EventRow({required this.event});
+  final TargetNameResolver resolver;
+  const _EventRow({required this.event, required this.resolver});
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.atriarch;
+    final id = event.targetId;
+    final label = id != null ? resolver.display(id) : '';
     final (color, text) = switch (event.type) {
       EventType.targetActivated => (
           tokens.statusLive,
-          'Target ${event.targetId} activated',
+          '$label activated',
         ),
       EventType.hitDetected => (
           tokens.statusHit,
-          'Target ${event.targetId} hit ${event.hitNumber}/${event.requiredHits}',
+          '$label hit ${event.hitNumber}/${event.requiredHits}',
         ),
       EventType.targetComplete => (
           tokens.statusLive,
-          'Target ${event.targetId} complete (${event.totalTimeMs}ms)',
+          '$label complete (${event.totalTimeMs}ms)',
         ),
       EventType.noShootViolation => (
           tokens.statusViolation,
-          'NO-SHOOT Target ${event.targetId}!',
+          'NO-SHOOT $label!',
         ),
       EventType.lateHit => (
           tokens.statusLate,
-          'Late hit on Target ${event.targetId}',
+          'Late hit on $label',
         ),
       EventType.drillFinished => (tokens.textTertiary, 'Drill finished'),
       EventType.error => (
