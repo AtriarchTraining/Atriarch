@@ -155,6 +155,10 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
   void _removeTargetFromGroup(int groupIndex, int targetId) {
     setState(() {
       groups[groupIndex].targetIds.remove(targetId);
+      if (groups[groupIndex].targetIds.isEmpty &&
+          _expandedGroupIndex == groupIndex) {
+        _expandedGroupIndex = null;
+      }
     });
   }
 
