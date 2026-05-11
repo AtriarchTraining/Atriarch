@@ -142,24 +142,83 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
     state.startDrill(config);
   }
 
-  void _assignTargetToGroup(int targetId) {
-    if (selectedGroupIndex == null) return;
+  void _addToGroup(int targetId, int groupIndex) {
     setState(() {
       for (final g in groups) {
         g.targetIds.remove(targetId);
       }
-      groups[selectedGroupIndex!].targetIds.add(targetId);
+      groups[groupIndex].targetIds.add(targetId);
     });
+    _showUndoSnackBar(
+      message: 'Target T/U_${targetId.toString().padLeft(2, '0')} added to '
+          'GROUP ${(groupIndex + 1).toString().padLeft(2, '0')}',
+      onUndo: () {
+        setState(() {
+          groups[groupIndex].targetIds.remove(targetId);
+        });
+      },
+    );
+  }
+
+  void _removeFromGroup(int targetId, int groupIndex) {
+    setState(() {
+      groups[groupIndex].targetIds.remove(targetId);
+    });
+    _showUndoSnackBar(
+      message: 'Target T/U_${targetId.toString().padLeft(2, '0')} removed '
+          'from GROUP ${(groupIndex + 1).toString().padLeft(2, '0')}',
+      onUndo: () {
+        setState(() {
+          groups[groupIndex].targetIds.add(targetId);
+        });
+      },
+    );
+  }
+
+  void _moveBetweenGroups(
+      int targetId, int fromGroupIndex, int toGroupIndex) {
+    setState(() {
+      groups[fromGroupIndex].targetIds.remove(targetId);
+      groups[toGroupIndex].targetIds.add(targetId);
+    });
+    _showUndoSnackBar(
+      message: 'Target T/U_${targetId.toString().padLeft(2, '0')} moved from '
+          'GROUP ${(fromGroupIndex + 1).toString().padLeft(2, '0')} to '
+          'GROUP ${(toGroupIndex + 1).toString().padLeft(2, '0')}',
+      onUndo: () {
+        setState(() {
+          groups[toGroupIndex].targetIds.remove(targetId);
+          groups[fromGroupIndex].targetIds.add(targetId);
+        });
+      },
+    );
+  }
+
+  void _showUndoSnackBar({
+    required String message,
+    required VoidCallback onUndo,
+  }) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'UNDO',
+          onPressed: onUndo,
+        ),
+      ),
+    );
+  }
+
+  void _assignTargetToGroup(int targetId) {
+    if (selectedGroupIndex == null) return;
+    _addToGroup(targetId, selectedGroupIndex!);
   }
 
   void _removeTargetFromGroup(int groupIndex, int targetId) {
-    setState(() {
-      groups[groupIndex].targetIds.remove(targetId);
-      if (groups[groupIndex].targetIds.isEmpty &&
-          _expandedGroupIndex == groupIndex) {
-        _expandedGroupIndex = null;
-      }
-    });
+    _removeFromGroup(targetId, groupIndex);
   }
 
   DrillConfig _currentConfigSnapshot() {
