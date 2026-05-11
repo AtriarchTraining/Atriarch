@@ -106,7 +106,7 @@ class GroupTargetSheet extends StatelessWidget {
                 ),
           onTap: from == null
               ? null
-              : () => _handleMoveTap(context, state, id, from, resolver),
+              : () => _handleMoveTap(context, id, from, resolver),
         ));
       }
       sections.add(const SizedBox(height: AtriarchSpacing.md));
@@ -154,11 +154,11 @@ class GroupTargetSheet extends StatelessWidget {
 
   Future<void> _handleMoveTap(
     BuildContext context,
-    AppState state,
     int targetId,
     int fromGroupIndex,
     TargetNameResolver resolver,
   ) async {
+    final state = context.read<AppState>();
     if (state.skipMoveConfirmation) {
       onMove(targetId, fromGroupIndex);
       return;
@@ -171,6 +171,7 @@ class GroupTargetSheet extends StatelessWidget {
         toLabel: _groupLabel(groupIndex),
       ),
     );
+    if (!context.mounted) return;
     if (confirmed == true) {
       onMove(targetId, fromGroupIndex);
     }
