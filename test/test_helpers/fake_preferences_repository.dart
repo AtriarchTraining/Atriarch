@@ -84,4 +84,47 @@ class FakePreferencesRepository implements PreferencesRepository {
   Future<void> setSkipMoveConfirmation(bool v) async {
     _skipMoveConfirmation = v;
   }
+
+  // --- target groups ---
+  final Map<int, int> _targetGroups = {};
+
+  @override
+  Future<Map<int, int>> getTargetGroups() async => Map.from(_targetGroups);
+
+  @override
+  Future<void> setTargetGroup(int targetId, int? groupNumber) async {
+    if (groupNumber == null) {
+      _targetGroups.remove(targetId);
+    } else {
+      _targetGroups[targetId] = groupNumber;
+    }
+  }
+
+  // --- target group labels ---
+  final Map<int, String> _targetGroupLabels = {};
+
+  @override
+  Future<Map<int, String>> getTargetGroupLabels() async =>
+      Map.from(_targetGroupLabels);
+
+  @override
+  Future<void> setTargetGroupLabel(int groupNumber, String? label) async {
+    if (label == null || label.isEmpty) {
+      _targetGroupLabels.remove(groupNumber);
+    } else {
+      _targetGroupLabels[groupNumber] = label;
+    }
+  }
+
+  // --- target group order ---
+  List<int> _targetGroupOrder = [];
+
+  @override
+  Future<List<int>> getTargetGroupOrder() async =>
+      List.from(_targetGroupOrder);
+
+  @override
+  Future<void> setTargetGroupOrder(List<int> order) async {
+    _targetGroupOrder = List.from(order);
+  }
 }

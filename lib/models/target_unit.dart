@@ -1,7 +1,6 @@
 class TargetUnit {
   final int id;
   bool isOnline;
-  int? groupId;
   bool isNoShoot;
 
   /// Optional user-assigned name (e.g. "Flipper").
@@ -16,7 +15,6 @@ class TargetUnit {
   TargetUnit({
     required this.id,
     this.isOnline = false,
-    this.groupId,
     this.isNoShoot = false,
     this.displayName,
     this.isUnreachable = false,
