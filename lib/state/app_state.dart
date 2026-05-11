@@ -413,6 +413,7 @@ class AppState extends ChangeNotifier {
     final decoded = TransmitterProtocol.decodeTelemetry(message);
 
     if (decoded is DiscoveredTarget) {
+      _seenInCurrentScan.add(decoded.id);
       final existing = targets.where((t) => t.id == decoded.id);
       if (existing.isEmpty) {
         targets.add(TargetUnit(id: decoded.id, isOnline: true));
@@ -428,6 +429,14 @@ class AppState extends ChangeNotifier {
       _scanTimeout = null;
       isScanning = false;
       _discoveryDoneSeenForCurrentCycle = true;
+      // Mark non-responders offline only after a full scan completes.
+      // Scans that fail to produce a DDONE (BLE drop, transmitter quiet)
+      // leave existing online state intact — see _seenInCurrentScan doc.
+      for (final t in targets) {
+        if (!_seenInCurrentScan.contains(t.id)) {
+          t.isOnline = false;
+        }
+      }
       // Gate-2 #15: play the "ready" chime once per discovery cycle.
       if (!_readyChimePlayedForCurrentCycle) {
         _readyChimePlayedForCurrentCycle = true;
@@ -501,13 +510,17 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Target ids that responded with a PONG during the active scan.
+  /// Used by [_handleIncomingData] DDONE branch to mark non-responders offline
+  /// only after the scan completes — avoids blanking out the UI on a
+  /// momentary BLE drop or transient rescan.
+  final Set<int> _seenInCurrentScan = <int>{};
+
   Future<void> discoverTargets() async {
     isScanning = true;
     _readyChimePlayedForCurrentCycle = false;
     _discoveryDoneSeenForCurrentCycle = false;
-    for (final t in targets) {
-      t.isOnline = false;
-    }
+    _seenInCurrentScan.clear();
     notifyListeners();
     // Safety timeout: transmitter's full scan is ~1.5s (30 addresses × 50ms).
     // Give it 8s for BLE + any queueing delay; if DDONE/ hasn't arrived by

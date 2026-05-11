@@ -38,6 +38,18 @@ class _TargetSetupScreenState extends State<TargetSetupScreen> {
     await context.read<AppState>().walkTheRange();
   }
 
+  Future<void> _onFlash(BuildContext context, AppState state, int targetId) async {
+    final name = state.targetNames[targetId] ?? 'Target $targetId';
+    await state.identifyTarget(targetId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Flash sent to $name'),
+        duration: const Duration(milliseconds: 1500),
+      ),
+    );
+  }
+
   Future<void> _renameGroupDialog(BuildContext context, int groupNumber) async {
     final state = context.read<AppState>();
     final controller = TextEditingController(
@@ -184,7 +196,7 @@ class _TargetSetupScreenState extends State<TargetSetupScreen> {
                                   state.setTargetGroup(t.id, g),
                               onCreateNewGroup: () =>
                                   _createGroupAndRename(context),
-                              onFlash: () => state.identifyTarget(t.id),
+                              onFlash: () => _onFlash(context, state, t.id),
                             );
                           },
                         ),
