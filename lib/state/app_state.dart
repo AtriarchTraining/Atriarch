@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/computed_metrics.dart';
 import '../models/drill_config.dart';
+import '../models/target_group.dart';
 import '../models/drill_session.dart';
 import '../models/session_event.dart';
 import '../models/session_record.dart';
@@ -60,6 +61,11 @@ class AppState extends ChangeNotifier {
   final DrillTemplateRepository? drillTemplates;
 
   Map<int, String> _targetNames = <int, String>{};
+  Map<int, int> _targetGroupAssignments = <int, int>{};
+  Map<int, String> _targetGroupLabels = <int, String>{};
+  List<int> _targetGroupOrder = <int>[];
+  // High-water mark: always the max group id ever allocated, never decremented.
+  int _groupHighWater = 0;
   Set<int> _removedTargetIds = <int>{};
   bool _showRemoved = false;
   bool _onboardingComplete = false;
@@ -71,6 +77,11 @@ class AppState extends ChangeNotifier {
   bool _skipMoveConfirmation = false;
 
   Map<int, String> get targetNames => Map.unmodifiable(_targetNames);
+  Map<int, int> get targetGroupAssignments =>
+      Map.unmodifiable(_targetGroupAssignments);
+  Map<int, String> get targetGroupLabels =>
+      Map.unmodifiable(_targetGroupLabels);
+  List<int> get targetGroupOrder => List.unmodifiable(_targetGroupOrder);
   Set<int> get removedTargetIds => Set.unmodifiable(_removedTargetIds);
   bool get showRemoved => _showRemoved;
   bool get onboardingComplete => _onboardingComplete;
@@ -183,6 +194,12 @@ class AppState extends ChangeNotifier {
     final prefs = preferences;
     if (prefs == null) return;
     _targetNames = await prefs.getTargetNames();
+    _targetGroupAssignments = await prefs.getTargetGroups();
+    _targetGroupLabels = await prefs.getTargetGroupLabels();
+    _targetGroupOrder = await prefs.getTargetGroupOrder();
+    _groupHighWater = _targetGroupOrder.isEmpty
+        ? 0
+        : _targetGroupOrder.reduce((a, b) => a > b ? a : b);
     _removedTargetIds = await prefs.getRemovedTargetIds();
     _onboardingComplete = await prefs.isOnboardingComplete();
     _readyAudioEnabled = await prefs.isReadyAudioEnabled();
@@ -200,6 +217,93 @@ class AppState extends ChangeNotifier {
       _targetNames[id] = name;
     }
     notifyListeners();
+  }
+
+  // --- Persistent target groups ---
+
+  Future<int> createTargetGroup({String? label}) async {
+    final next = _groupHighWater + 1;
+    _groupHighWater = next;
+    _targetGroupOrder = [..._targetGroupOrder, next];
+    await preferences?.setTargetGroupOrder(_targetGroupOrder);
+    if (label != null && label.isNotEmpty) {
+      _targetGroupLabels[next] = label;
+      await preferences?.setTargetGroupLabel(next, label);
+    }
+    notifyListeners();
+    return next;
+  }
+
+  Future<void> renameTargetGroup(int groupNumber, String? label) async {
+    if (label == null || label.isEmpty) {
+      _targetGroupLabels.remove(groupNumber);
+    } else {
+      _targetGroupLabels[groupNumber] = label;
+    }
+    await preferences?.setTargetGroupLabel(groupNumber, label);
+    notifyListeners();
+  }
+
+  Future<void> deleteTargetGroup(int groupNumber) async {
+    _targetGroupOrder = _targetGroupOrder
+        .where((g) => g != groupNumber)
+        .toList(growable: false);
+    _targetGroupLabels.remove(groupNumber);
+    // Clear persisted assignments pointing at this group, then sync in-memory.
+    final stored = await preferences?.getTargetGroups() ?? <int, int>{};
+    for (final id in stored.keys.toList()) {
+      if (stored[id] == groupNumber) {
+        await preferences?.setTargetGroup(id, null);
+      }
+    }
+    _targetGroupAssignments.removeWhere((_, g) => g == groupNumber);
+    await preferences?.setTargetGroupOrder(_targetGroupOrder);
+    await preferences?.setTargetGroupLabel(groupNumber, null);
+    notifyListeners();
+  }
+
+  Future<void> setTargetGroup(int targetId, int? groupNumber) async {
+    if (groupNumber == null) {
+      _targetGroupAssignments.remove(targetId);
+    } else {
+      _targetGroupAssignments[targetId] = groupNumber;
+    }
+    await preferences?.setTargetGroup(targetId, groupNumber);
+    notifyListeners();
+  }
+
+  /// Emits one [TargetGroup] per persistent group in display order that has
+  /// at least one assigned target. Used by Program A setup to seed the
+  /// initial drill config when not loading a saved template.
+  List<TargetGroup> buildSeededGroups() {
+    final result = <TargetGroup>[];
+    for (final groupNumber in _targetGroupOrder) {
+      final ids = _targetGroupAssignments.entries
+          .where((e) => e.value == groupNumber)
+          .map((e) => e.key)
+          .toList()
+        ..sort();
+      if (ids.isEmpty) continue;
+      result.add(TargetGroup(
+        id: groupNumber,
+        name: _targetGroupLabels[groupNumber],
+        targetIds: ids,
+      ));
+    }
+    return result;
+  }
+
+  // --- Walk the range (shared by Home + Target Setup screens) ---
+
+  /// Iterates online targets and identifies each in turn:
+  /// TTS-speak resolved display name, send IDENT, wait 2s.
+  Future<void> walkTheRange() async {
+    for (final target in targets.where((t) => t.isOnline)) {
+      final name = _targetNames[target.id] ?? 'Target ${target.id}';
+      await tts?.speak(name);
+      await identifyTarget(target.id);
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
   }
 
   Future<void> markTargetRemoved(int id) async {
