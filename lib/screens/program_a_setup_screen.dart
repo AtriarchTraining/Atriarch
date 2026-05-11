@@ -143,6 +143,9 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
   }
 
   void _addToGroup(int targetId, int groupIndex) {
+    final prevGroupIndex = groups.indexWhere(
+      (g) => g.targetIds.contains(targetId),
+    ); // -1 if unassigned
     setState(() {
       for (final g in groups) {
         g.targetIds.remove(targetId);
@@ -155,6 +158,10 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
       onUndo: () {
         setState(() {
           groups[groupIndex].targetIds.remove(targetId);
+          if (prevGroupIndex != -1) {
+            groups[prevGroupIndex].targetIds.remove(targetId); // idempotent
+            groups[prevGroupIndex].targetIds.add(targetId);
+          }
         });
       },
     );
@@ -169,6 +176,7 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
           'from GROUP ${(groupIndex + 1).toString().padLeft(2, '0')}',
       onUndo: () {
         setState(() {
+          groups[groupIndex].targetIds.remove(targetId); // idempotent
           groups[groupIndex].targetIds.add(targetId);
         });
       },
@@ -187,7 +195,8 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
           'GROUP ${(toGroupIndex + 1).toString().padLeft(2, '0')}',
       onUndo: () {
         setState(() {
-          groups[toGroupIndex].targetIds.remove(targetId);
+          groups[toGroupIndex].targetIds.remove(targetId); // idempotent: ensure not present
+          groups[fromGroupIndex].targetIds.remove(targetId); // idempotent
           groups[fromGroupIndex].targetIds.add(targetId);
         });
       },
