@@ -654,6 +654,7 @@ class _PhaseAwareSheet extends StatefulWidget {
 class _PhaseAwareSheetState extends State<_PhaseAwareSheet> {
   late final VoidCallback _listener;
   late final AppState _state;
+  ModalRoute<Object?>? _route;
 
   @override
   void initState() {
@@ -661,10 +662,19 @@ class _PhaseAwareSheetState extends State<_PhaseAwareSheet> {
     _state = context.read<AppState>();
     _listener = () {
       if (_state.phase != DrillPhase.idle && mounted) {
-        Navigator.of(context).maybePop();
+        final route = _route;
+        if (route != null && route.isActive) {
+          Navigator.of(context).removeRoute(route);
+        }
       }
     };
     _state.addListener(_listener);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route ??= ModalRoute.of(context);
   }
 
   @override

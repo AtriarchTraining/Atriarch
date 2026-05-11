@@ -229,4 +229,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.skipMoveConfirmation, true);
   });
+
+  testWidgets('adding from AVAILABLE moves the row to IN THIS GROUP immediately',
+      (tester) async {
+    final state = AppState()
+      ..targets = [
+        TargetUnit(id: 1, isOnline: true),
+        TargetUnit(id: 2, isOnline: true),
+      ];
+    int addedId = -1;
+    await tester.pumpWidget(harness(
+      state: state,
+      groupIndex: 0,
+      thisGroupIds: const [],
+      assignedElsewhereIds: const [],
+      targetIdToGroupIndex: const {},
+      onAdd: (id) => addedId = id,
+    ));
+    // Initially: both targets are in AVAILABLE; IN THIS GROUP is hidden.
+    expect(find.text('AVAILABLE'), findsOneWidget);
+    expect(find.text('IN THIS GROUP'), findsNothing);
+
+    await tester.tap(find.text('T/U_01'));
+    await tester.pumpAndSettle();
+
+    // After tapping: T/U_01 should be in IN THIS GROUP (the section now exists);
+    // T/U_02 should remain in AVAILABLE.
+    expect(find.text('IN THIS GROUP'), findsOneWidget);
+    expect(find.text('T/U_01'), findsOneWidget); // still rendered, now in different section
+    expect(find.text('T/U_02'), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsOneWidget); // close icon on the moved row
+    expect(addedId, 1); // parent callback also fired
+  });
 }

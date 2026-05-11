@@ -8,9 +8,10 @@ import 'tactical/tactical_section.dart';
 
 /// Modal bottom-sheet content for managing a single group's target
 /// assignments. Three sections (IN THIS GROUP / AVAILABLE / ASSIGNED
-/// ELSEWHERE). Empty sections hide entirely. State is owned by the parent;
-/// this widget is pure presentation + tap dispatch.
-class GroupTargetSheet extends StatelessWidget {
+/// ELSEWHERE). Empty sections hide entirely. Maintains local mutable copies
+/// of the three list/map props so the sheet rebuilds immediately on every
+/// tap, while also notifying the parent via callbacks.
+class GroupTargetSheet extends StatefulWidget {
   final int groupIndex; // 0-based
   final List<int> thisGroupIds;
   final List<int> assignedElsewhereIds;
@@ -30,8 +31,50 @@ class GroupTargetSheet extends StatelessWidget {
     required this.onMove,
   });
 
+  @override
+  State<GroupTargetSheet> createState() => _GroupTargetSheetState();
+}
+
+class _GroupTargetSheetState extends State<GroupTargetSheet> {
+  late List<int> _thisGroupIds;
+  late List<int> _assignedElsewhereIds;
+  late Map<int, int> _targetIdToGroupIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _thisGroupIds = List<int>.from(widget.thisGroupIds);
+    _assignedElsewhereIds = List<int>.from(widget.assignedElsewhereIds);
+    _targetIdToGroupIndex = Map<int, int>.from(widget.targetIdToGroupIndex);
+  }
+
   String _groupLabel(int index) =>
       'GROUP ${(index + 1).toString().padLeft(2, '0')}';
+
+  void _dispatchAdd(int id) {
+    setState(() {
+      _thisGroupIds.add(id);
+      _assignedElsewhereIds.remove(id);
+      _targetIdToGroupIndex.remove(id);
+    });
+    widget.onAdd(id);
+  }
+
+  void _dispatchRemove(int id) {
+    setState(() {
+      _thisGroupIds.remove(id);
+    });
+    widget.onRemove(id);
+  }
+
+  void _dispatchMove(int id, int fromGroupIndex) {
+    setState(() {
+      _assignedElsewhereIds.remove(id);
+      _targetIdToGroupIndex.remove(id);
+      _thisGroupIds.add(id);
+    });
+    widget.onMove(id, fromGroupIndex);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,25 +85,25 @@ class GroupTargetSheet extends StatelessWidget {
     final availableIds = state.targets
         .where((t) =>
             t.isOnline &&
-            !thisGroupIds.contains(t.id) &&
-            !assignedElsewhereIds.contains(t.id))
+            !_thisGroupIds.contains(t.id) &&
+            !_assignedElsewhereIds.contains(t.id))
         .map((t) => t.id)
         .toList();
 
     final sections = <Widget>[];
 
-    if (thisGroupIds.isNotEmpty) {
+    if (_thisGroupIds.isNotEmpty) {
       sections.add(TacticalSection(
         code: 'IN THIS GROUP',
-        trailing: _groupLabel(groupIndex),
+        trailing: _groupLabel(widget.groupIndex),
       ));
-      for (final id in thisGroupIds) {
+      for (final id in _thisGroupIds) {
         sections.add(_TargetRow(
           label: resolver.display(id),
           trailing: IconButton(
             icon: const Icon(Icons.close, size: 18),
             color: tokens.statusViolation,
-            onPressed: () => onRemove(id),
+            onPressed: () => _dispatchRemove(id),
           ),
           onTap: null,
         ));
@@ -74,16 +117,16 @@ class GroupTargetSheet extends StatelessWidget {
         sections.add(_TargetRow(
           label: resolver.display(id),
           trailing: null,
-          onTap: () => onAdd(id),
+          onTap: () => _dispatchAdd(id),
         ));
       }
       sections.add(const SizedBox(height: AtriarchSpacing.md));
     }
 
-    if (assignedElsewhereIds.isNotEmpty) {
+    if (_assignedElsewhereIds.isNotEmpty) {
       sections.add(const TacticalSection(code: 'ASSIGNED ELSEWHERE'));
-      for (final id in assignedElsewhereIds) {
-        final from = targetIdToGroupIndex[id];
+      for (final id in _assignedElsewhereIds) {
+        final from = _targetIdToGroupIndex[id];
         sections.add(_TargetRow(
           label: resolver.display(id),
           trailing: from == null
@@ -121,7 +164,7 @@ class GroupTargetSheet extends StatelessWidget {
           AtriarchSpacing.sm,
         ),
         child: Text(
-          '${_groupLabel(groupIndex)} — TARGETS',
+          '${_groupLabel(widget.groupIndex)} — TARGETS',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: tokens.textPrimary,
@@ -160,7 +203,7 @@ class GroupTargetSheet extends StatelessWidget {
   ) async {
     final state = context.read<AppState>();
     if (state.skipMoveConfirmation) {
-      onMove(targetId, fromGroupIndex);
+      _dispatchMove(targetId, fromGroupIndex);
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -168,12 +211,12 @@ class GroupTargetSheet extends StatelessWidget {
       builder: (_) => _MoveConfirmationDialog(
         targetLabel: resolver.display(targetId),
         fromLabel: _groupLabel(fromGroupIndex),
-        toLabel: _groupLabel(groupIndex),
+        toLabel: _groupLabel(widget.groupIndex),
       ),
     );
     if (!context.mounted) return;
     if (confirmed == true) {
-      onMove(targetId, fromGroupIndex);
+      _dispatchMove(targetId, fromGroupIndex);
     }
   }
 }
