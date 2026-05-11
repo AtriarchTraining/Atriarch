@@ -64,6 +64,16 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
       _boundState = state;
       state.addListener(_onPhaseChanged);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final state = context.read<AppState>();
+      final seeded = state.buildSeededGroups();
+      setState(() {
+        groups = seeded.isNotEmpty
+            ? seeded
+            : List.generate(5, (i) => TargetGroup(id: i + 1));
+      });
+    });
   }
 
   @override
@@ -530,7 +540,7 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
                 crossAxisSpacing: AtriarchSpacing.sm,
                 childAspectRatio: 1.6,
                 children: List.generate(
-                  5,
+                  groups.length,
                   (i) => GestureDetector(
                     onLongPress: () {
                       if (groups[i].targetIds.isEmpty) return;
