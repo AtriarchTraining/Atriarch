@@ -12,6 +12,7 @@ class FakePreferencesRepository implements PreferencesRepository {
   DateTime? _visitStart;
   bool _readyAudioEnabled = true;
   double _readyAudioVolume = 1.0;
+  bool _skipMoveConfirmation = false;
 
   @override
   Future<String?> getDefaultPresetId() async => _defaultPresetId;
@@ -75,4 +76,12 @@ class FakePreferencesRepository implements PreferencesRepository {
   @override
   Future<void> setReadyAudioVolume(double v) async =>
       _readyAudioVolume = v.clamp(0.0, 1.0);
+
+  @override
+  Future<bool> getSkipMoveConfirmation() async => _skipMoveConfirmation;
+
+  @override
+  Future<void> setSkipMoveConfirmation(bool v) async {
+    _skipMoveConfirmation = v;
+  }
 }

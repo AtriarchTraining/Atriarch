@@ -13,6 +13,7 @@ class PreferencesRepository {
   static const String _kReadyAudioEnabled = 'ready_audio_enabled';
   static const String _kReadyAudioVolume = 'ready_audio_volume';
   static const String _kVisitStart = 'range_visit_start_ms';
+  static const String _kSkipMoveConfirmation = 'skip_move_confirmation';
 
   final SharedPreferences _prefs;
   PreferencesRepository(this._prefs);
@@ -134,4 +135,11 @@ class PreferencesRepository {
     final clamped = v.clamp(0.0, 1.0);
     await _prefs.setDouble(_kReadyAudioVolume, clamped);
   }
+
+  // --- skip cross-group move confirmation dialog ---
+  Future<bool> getSkipMoveConfirmation() async =>
+      _prefs.getBool(_kSkipMoveConfirmation) ?? false;
+
+  Future<void> setSkipMoveConfirmation(bool v) async =>
+      _prefs.setBool(_kSkipMoveConfirmation, v);
 }
