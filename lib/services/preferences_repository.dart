@@ -14,6 +14,9 @@ class PreferencesRepository {
   static const String _kReadyAudioVolume = 'ready_audio_volume';
   static const String _kVisitStart = 'range_visit_start_ms';
   static const String _kSkipMoveConfirmation = 'skip_move_confirmation';
+  static const String _kTargetGroups = 'target_groups';
+  static const String _kTargetGroupLabels = 'target_group_labels';
+  static const String _kTargetGroupOrder = 'target_group_order';
 
   final SharedPreferences _prefs;
   PreferencesRepository(this._prefs);
@@ -134,6 +137,91 @@ class PreferencesRepository {
   Future<void> setReadyAudioVolume(double v) async {
     final clamped = v.clamp(0.0, 1.0);
     await _prefs.setDouble(_kReadyAudioVolume, clamped);
+  }
+
+  // --- target groups (Map<int targetId, int groupNumber>) ---
+  Future<Map<int, int>> getTargetGroups() async {
+    final raw = _prefs.getString(_kTargetGroups);
+    if (raw == null || raw.isEmpty) return <int, int>{};
+    final decoded = json.decode(raw);
+    if (decoded is! Map) return <int, int>{};
+    final result = <int, int>{};
+    decoded.forEach((k, v) {
+      final id = k is int ? k : int.tryParse('$k') ?? -1;
+      final g = v is int ? v : int.tryParse('$v') ?? -1;
+      if (id >= 0 && g >= 1) result[id] = g;
+    });
+    return result;
+  }
+
+  Future<void> setTargetGroup(int targetId, int? groupNumber) async {
+    final current = Map<String, int>.from(
+      (json.decode(_prefs.getString(_kTargetGroups) ?? '{}') as Map)
+          .map((k, v) => MapEntry('$k', (v is num) ? v.toInt() : 0)),
+    )..removeWhere((_, v) => v <= 0);
+    final key = targetId.toString();
+    if (groupNumber == null) {
+      current.remove(key);
+    } else {
+      current[key] = groupNumber;
+    }
+    if (current.isEmpty) {
+      await _prefs.remove(_kTargetGroups);
+    } else {
+      await _prefs.setString(_kTargetGroups, json.encode(current));
+    }
+  }
+
+  // --- target group labels (Map<int groupNumber, String label>) ---
+  Future<Map<int, String>> getTargetGroupLabels() async {
+    final raw = _prefs.getString(_kTargetGroupLabels);
+    if (raw == null || raw.isEmpty) return <int, String>{};
+    final decoded = json.decode(raw);
+    if (decoded is! Map) return <int, String>{};
+    final result = <int, String>{};
+    decoded.forEach((k, v) {
+      final g = k is int ? k : int.tryParse('$k') ?? -1;
+      if (g >= 1) result[g] = '$v';
+    });
+    return result;
+  }
+
+  Future<void> setTargetGroupLabel(int groupNumber, String? label) async {
+    final current = Map<String, String>.from(
+      (json.decode(_prefs.getString(_kTargetGroupLabels) ?? '{}') as Map)
+          .map((k, v) => MapEntry('$k', '$v')),
+    );
+    final key = groupNumber.toString();
+    if (label == null || label.isEmpty) {
+      current.remove(key);
+    } else {
+      current[key] = label;
+    }
+    if (current.isEmpty) {
+      await _prefs.remove(_kTargetGroupLabels);
+    } else {
+      await _prefs.setString(_kTargetGroupLabels, json.encode(current));
+    }
+  }
+
+  // --- target group display order (List<int>) ---
+  Future<List<int>> getTargetGroupOrder() async {
+    final raw = _prefs.getString(_kTargetGroupOrder);
+    if (raw == null || raw.isEmpty) return <int>[];
+    return raw
+        .split(',')
+        .map((s) => int.tryParse(s.trim()))
+        .whereType<int>()
+        .where((g) => g >= 1)
+        .toList();
+  }
+
+  Future<void> setTargetGroupOrder(List<int> order) async {
+    if (order.isEmpty) {
+      await _prefs.remove(_kTargetGroupOrder);
+    } else {
+      await _prefs.setString(_kTargetGroupOrder, order.join(','));
+    }
   }
 
   // --- skip cross-group move confirmation dialog ---
