@@ -16,7 +16,7 @@ void main() {
       groupIndex: 0,
       targetIds: const [1, 2, 3],
       selected: false,
-      expanded: false,
+
       resolver: const TargetNameResolver({}),
       onTap: () {},
       onRemoveTarget: (_) {},
@@ -32,7 +32,7 @@ void main() {
       groupIndex: 1,
       targetIds: const [],
       selected: false,
-      expanded: false,
+
       resolver: const TargetNameResolver({}),
       onTap: () {},
       onRemoveTarget: (_) {},
@@ -48,7 +48,7 @@ void main() {
       groupIndex: 0,
       targetIds: const [],
       selected: false,
-      expanded: false,
+
       resolver: const TargetNameResolver({}),
       onTap: () => tapped++,
       onRemoveTarget: (_) {},
@@ -63,7 +63,7 @@ void main() {
       groupIndex: 0,
       targetIds: const [1, 2],
       selected: false,
-      expanded: false,
+
       resolver: const TargetNameResolver({}),
       onTap: () {},
       onRemoveTarget: (_) {},
@@ -74,33 +74,12 @@ void main() {
     expect(find.byIcon(Icons.close), findsNothing);
   });
 
-  testWidgets('expanded card shows chips with remove buttons',
-      (tester) async {
-    int? removed;
-    await tester.pumpWidget(wrap(GroupNodeCard(
-      groupIndex: 0,
-      targetIds: const [1, 2],
-      selected: false,
-      expanded: true,
-      resolver: const TargetNameResolver({}),
-      onTap: () {},
-      onRemoveTarget: (id) => removed = id,
-    )));
-
-    expect(find.text('T/U_01'), findsOneWidget);
-    expect(find.text('T/U_02'), findsOneWidget);
-    expect(find.byIcon(Icons.close), findsNWidgets(2));
-
-    await tester.tap(find.byIcon(Icons.close).first);
-    expect(removed, 1);
-  });
-
   testWidgets('uses custom name when resolver provides one', (tester) async {
     await tester.pumpWidget(wrap(GroupNodeCard(
       groupIndex: 0,
       targetIds: const [1, 2],
       selected: false,
-      expanded: false,
+
       resolver: const TargetNameResolver({1: 'Flipper'}),
       onTap: () {},
       onRemoveTarget: (_) {},
@@ -122,7 +101,7 @@ void main() {
           groupIndex: 0,
           targetIds: const [1, 2],
           selected: false,
-          expanded: false,
+    
           resolver: const TargetNameResolver({}),
           onTap: () {},
           onRemoveTarget: (_) {},
@@ -139,7 +118,7 @@ void main() {
           groupIndex: 0,
           targetIds: const [1, 2, 3, 4, 5, 6, 7, 8],
           selected: false,
-          expanded: false,
+    
           resolver: const TargetNameResolver({}),
           onTap: () {},
           onRemoveTarget: (_) {},
@@ -166,7 +145,7 @@ void main() {
           groupIndex: 0,
           targetIds: const [1, 2],
           selected: false,
-          expanded: false,
+    
           resolver: const TargetNameResolver({1: longName}),
           onTap: () {},
           onRemoveTarget: (_) {},
@@ -205,7 +184,7 @@ void main() {
               // Four long custom names — the worst documented case.
               targetIds: const [1, 2, 3, 4],
               selected: false,
-              expanded: false,
+        
               resolver: const TargetNameResolver({
                 1: 'LongName-Left-One',
                 2: 'LongName-Left-Two',

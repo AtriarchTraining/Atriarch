@@ -24,6 +24,7 @@ import '../widgets/tactical/tactical_section.dart';
 import '../widgets/tactical/tactical_status_chip.dart';
 import '../widgets/tactical/tactical_stepper.dart';
 import '../widgets/tactical/target_node_chip.dart';
+import '../widgets/group_target_sheet.dart';
 import '../widgets/target_actions_sheet.dart';
 import 'drill_running_screen.dart';
 import 'shooter_picker_screen.dart';
@@ -46,7 +47,6 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
 
   List<TargetGroup> groups = List.generate(5, (i) => TargetGroup(id: i + 1));
   int? selectedGroupIndex;
-  int? _expandedGroupIndex;
   DrillConfig? _lastConfig;
   AppState? _boundState;
   DrillTemplate? _selectedTemplate;
@@ -216,6 +216,45 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
         action: SnackBarAction(
           label: 'UNDO',
           onPressed: onUndo,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openGroupSheet(int groupIndex) async {
+    final thisGroupIds = List<int>.from(groups[groupIndex].targetIds);
+    final assignedElsewhereIds = <int>[];
+    final targetIdToGroupIndex = <int, int>{};
+    for (var gi = 0; gi < groups.length; gi++) {
+      if (gi == groupIndex) continue;
+      for (final tid in groups[gi].targetIds) {
+        assignedElsewhereIds.add(tid);
+        targetIdToGroupIndex[tid] = gi;
+      }
+    }
+    final state = context.read<AppState>();
+    // Filter ASSIGNED ELSEWHERE to online targets only (mirrors AVAILABLE).
+    final onlineIds = state.targets
+        .where((t) => t.isOnline)
+        .map((t) => t.id)
+        .toSet();
+    assignedElsewhereIds.removeWhere((id) => !onlineIds.contains(id));
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ChangeNotifierProvider<AppState>.value(
+        value: state,
+        child: _PhaseAwareSheet(
+          child: GroupTargetSheet(
+            groupIndex: groupIndex,
+            thisGroupIds: thisGroupIds,
+            assignedElsewhereIds: assignedElsewhereIds,
+            targetIdToGroupIndex: targetIdToGroupIndex,
+            onAdd: (id) => _addToGroup(id, groupIndex),
+            onRemove: (id) => _removeFromGroup(id, groupIndex),
+            onMove: (id, from) => _moveBetweenGroups(id, from, groupIndex),
+          ),
         ),
       ),
     );
@@ -504,13 +543,11 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
                       groupIndex: i,
                       targetIds: groups[i].targetIds,
                       selected: selectedGroupIndex == i,
-                      expanded: _expandedGroupIndex == i,
                       resolver: resolver,
-                      onTap: () => setState(() {
-                        selectedGroupIndex = i;
-                        _expandedGroupIndex =
-                            _expandedGroupIndex == i ? null : i;
-                      }),
+                      onTap: () {
+                        setState(() => selectedGroupIndex = i);
+                        _openGroupSheet(i);
+                      },
                       onRemoveTarget: (id) => _removeTargetFromGroup(i, id),
                     ),
                   ),
@@ -604,5 +641,39 @@ class _ProgramASetupScreenState extends State<ProgramASetupScreen> {
       ],
     );
   }
+}
+
+class _PhaseAwareSheet extends StatefulWidget {
+  final Widget child;
+  const _PhaseAwareSheet({required this.child});
+
+  @override
+  State<_PhaseAwareSheet> createState() => _PhaseAwareSheetState();
+}
+
+class _PhaseAwareSheetState extends State<_PhaseAwareSheet> {
+  late final VoidCallback _listener;
+  late final AppState _state;
+
+  @override
+  void initState() {
+    super.initState();
+    _state = context.read<AppState>();
+    _listener = () {
+      if (_state.phase != DrillPhase.idle && mounted) {
+        Navigator.of(context).maybePop();
+      }
+    };
+    _state.addListener(_listener);
+  }
+
+  @override
+  void dispose() {
+    _state.removeListener(_listener);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 

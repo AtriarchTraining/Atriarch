@@ -585,6 +585,12 @@ class AppState extends ChangeNotifier {
   }
 
   @visibleForTesting
+  void setPhaseForTesting(DrillPhase p) {
+    _phase = p;
+    notifyListeners();
+  }
+
+  @visibleForTesting
   Future<void> forceFlushForTesting() async {
     final id = _activeDbSessionId;
     final sessions = _sessions;

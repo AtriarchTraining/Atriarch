@@ -6,7 +6,6 @@ class GroupNodeCard extends StatelessWidget {
   final int groupIndex; // 0-based
   final List<int> targetIds;
   final bool selected;
-  final bool expanded;
   final TargetNameResolver resolver;
   final VoidCallback onTap;
   final ValueChanged<int> onRemoveTarget;
@@ -16,7 +15,6 @@ class GroupNodeCard extends StatelessWidget {
     required this.groupIndex,
     required this.targetIds,
     required this.selected,
-    required this.expanded,
     required this.resolver,
     required this.onTap,
     required this.onRemoveTarget,
@@ -77,29 +75,11 @@ class GroupNodeCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   if (targetIds.isNotEmpty)
-                    expanded
-                        ? Wrap(
-                            spacing: 4,
-                            runSpacing: 4,
-                            children: targetIds
-                                .map(
-                                  (id) => InputChip(
-                                    label: Text(resolver.display(id)),
-                                    onDeleted: () => onRemoveTarget(id),
-                                    deleteIcon: Icon(
-                                      Icons.close,
-                                      size: 14,
-                                      color: tokens.statusViolation,
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                          )
-                        : _CollapsedLabels(
-                            targetIds: targetIds,
-                            resolver: resolver,
-                            tokens: tokens,
-                          ),
+                    _CollapsedLabels(
+                      targetIds: targetIds,
+                      resolver: resolver,
+                      tokens: tokens,
+                    ),
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
