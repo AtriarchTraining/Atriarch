@@ -179,4 +179,50 @@ void main() {
     final longNameText = tester.widget<Text>(find.text(longName));
     expect(longNameText.overflow, TextOverflow.ellipsis);
   });
+
+  testWidgets(
+      'collapsed card does not overflow at realistic grid width',
+      (tester) async {
+    // Mirror the production GridView: 320px viewport → ~160px cells at
+    // crossAxisCount: 2, childAspectRatio: 1.6.
+    // This directly tests the user-visible invariant: no layout errors at the
+    // narrowest expected grid width with four long custom target names.
+    final errors = <FlutterErrorDetails>[];
+    final originalOnError = FlutterError.onError;
+    FlutterError.onError = errors.add;
+
+    try {
+      await tester.binding.setSurfaceSize(const Size(320, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(wrap(
+        GridView.count(
+          crossAxisCount: 2,
+          childAspectRatio: 1.6,
+          children: [
+            GroupNodeCard(
+              groupIndex: 0,
+              // Four long custom names — the worst documented case.
+              targetIds: const [1, 2, 3, 4],
+              selected: false,
+              expanded: false,
+              resolver: const TargetNameResolver({
+                1: 'LongName-Left-One',
+                2: 'LongName-Left-Two',
+                3: 'LongName-Right-One',
+                4: 'LongName-Right-Two',
+              }),
+              onTap: () {},
+              onRemoveTarget: (_) {},
+            ),
+          ],
+        ),
+      ));
+
+      expect(errors, isEmpty,
+          reason: 'Collapsed card overflowed at realistic GridView width.');
+    } finally {
+      FlutterError.onError = originalOnError;
+    }
+  });
 }

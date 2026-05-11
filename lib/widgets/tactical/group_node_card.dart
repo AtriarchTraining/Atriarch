@@ -75,7 +75,7 @@ class GroupNodeCard extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                   ),
-                  const SizedBox(height: AtriarchSpacing.md),
+                  const SizedBox(height: 4),
                   if (targetIds.isNotEmpty)
                     expanded
                         ? Wrap(
@@ -100,7 +100,7 @@ class GroupNodeCard extends StatelessWidget {
                             resolver: resolver,
                             tokens: tokens,
                           ),
-                  const SizedBox(height: AtriarchSpacing.sm),
+                  const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -139,24 +139,20 @@ class GroupNodeCard extends StatelessWidget {
   }
 }
 
-/// Collapsed unit-label list capped at 2 visual lines.
+/// Collapsed unit-label row — single line, bounded by available width.
 ///
-/// Strategy: render up to [_kMaxVisible] labels in a [Wrap]. If there are more
-/// targets than [_kMaxVisible], append a `…` text chip so the user knows there
-/// are hidden labels (visible on expand). Each label is width-constrained so a
-/// long custom name truncates with ellipsis rather than expanding the card.
-/// A [LimitedBox] + [ClipRect] hard-caps the rendered height to [_kMaxHeight]
-/// so the collapsed card height never grows regardless of target count.
+/// Strategy: render up to [_kMaxVisible] labels in a single [Row] of
+/// [Flexible] items. If there are more targets than [_kMaxVisible], append a
+/// `…` chip so the user knows there are hidden labels (visible on expand).
+/// Each label is [Flexible] so long custom names truncate with ellipsis rather
+/// than expanding the card. A single-line [Row] has a fixed line-height that
+/// is always well within the grid cell's vertical budget, eliminating the
+/// RenderFlex overflow errors that occurred with a multi-line [Wrap] under
+/// narrow grid widths (≈160px cells on a 320px viewport).
 class _CollapsedLabels extends StatelessWidget {
-  /// Max labels shown before the `…` ellipsis chip.  4 fits two rows of two
-  /// typical short labels (e.g. `T/U_01`) on a ~180px-wide grid cell.
-  static const int _kMaxVisible = 4;
-
-  /// Hard pixel cap: 2 lines × 12px line-height + 4px runSpacing + 4px slack.
-  static const double _kMaxHeight = 32;
-
-  /// Max width for each individual label so long custom names truncate.
-  static const double _kMaxLabelWidth = 80;
+  /// Max labels shown before the `…` ellipsis chip. 3 keeps the row readable
+  /// at the narrowest expected grid cell (~136px usable width).
+  static const int _kMaxVisible = 3;
 
   final List<int> targetIds;
   final TargetNameResolver resolver;
@@ -176,33 +172,41 @@ class _CollapsedLabels extends StatelessWidget {
 
     final labelStyle = AtriarchText.labelTiny(color: tokens.textPrimary);
 
-    final children = <Widget>[
-      for (final id in visibleIds)
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: _kMaxLabelWidth),
+    // Build alternating label + separator children. Each label is Flexible so
+    // the Row distributes remaining width rather than overflowing.
+    final rowChildren = <Widget>[];
+    for (int i = 0; i < visibleIds.length; i++) {
+      if (i > 0) {
+        rowChildren.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text('·', style: labelStyle),
+          ),
+        );
+      }
+      rowChildren.add(
+        Flexible(
           child: Text(
-            resolver.display(id),
+            resolver.display(visibleIds[i]),
             style: labelStyle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
         ),
-      if (hasOverflow)
-        Text(
-          '…',
-          style: labelStyle,
+      );
+    }
+    if (hasOverflow) {
+      rowChildren.add(
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text('…', style: labelStyle),
         ),
-    ];
+      );
+    }
 
-    return ClipRect(
-      child: LimitedBox(
-        maxHeight: _kMaxHeight,
-        child: Wrap(
-          spacing: AtriarchSpacing.sm,
-          runSpacing: 4,
-          children: children,
-        ),
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.max,
+      children: rowChildren,
     );
   }
 }
