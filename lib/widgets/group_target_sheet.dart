@@ -104,7 +104,9 @@ class GroupTargetSheet extends StatelessWidget {
                     ),
                   ),
                 ),
-          onTap: from == null ? null : () => onMove(id, from),
+          onTap: from == null
+              ? null
+              : () => _handleMoveTap(context, state, id, from, resolver),
         ));
       }
       sections.add(const SizedBox(height: AtriarchSpacing.md));
@@ -149,6 +151,30 @@ class GroupTargetSheet extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _handleMoveTap(
+    BuildContext context,
+    AppState state,
+    int targetId,
+    int fromGroupIndex,
+    TargetNameResolver resolver,
+  ) async {
+    if (state.skipMoveConfirmation) {
+      onMove(targetId, fromGroupIndex);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _MoveConfirmationDialog(
+        targetLabel: resolver.display(targetId),
+        fromLabel: _groupLabel(fromGroupIndex),
+        toLabel: _groupLabel(groupIndex),
+      ),
+    );
+    if (confirmed == true) {
+      onMove(targetId, fromGroupIndex);
+    }
+  }
 }
 
 class _TargetRow extends StatelessWidget {
@@ -181,6 +207,66 @@ class _TargetRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MoveConfirmationDialog extends StatefulWidget {
+  final String targetLabel;
+  final String fromLabel;
+  final String toLabel;
+  const _MoveConfirmationDialog({
+    required this.targetLabel,
+    required this.fromLabel,
+    required this.toLabel,
+  });
+
+  @override
+  State<_MoveConfirmationDialog> createState() =>
+      _MoveConfirmationDialogState();
+}
+
+class _MoveConfirmationDialogState extends State<_MoveConfirmationDialog> {
+  bool _dontShowAgain = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('MOVE TARGET'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Move ${widget.targetLabel} from ${widget.fromLabel} to '
+            '${widget.toLabel}?',
+          ),
+          const SizedBox(height: 8),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _dontShowAgain,
+            onChanged: (v) => setState(() => _dontShowAgain = v ?? false),
+            title: const Text("Don't show this again"),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('CANCEL'),
+        ),
+        TextButton(
+          onPressed: () async {
+            if (_dontShowAgain) {
+              await context.read<AppState>().setSkipMoveConfirmation(true);
+            }
+            if (!context.mounted) return;
+            Navigator.of(context).pop(true);
+          },
+          child: const Text('MOVE'),
+        ),
+      ],
     );
   }
 }

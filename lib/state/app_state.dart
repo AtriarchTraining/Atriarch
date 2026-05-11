@@ -263,6 +263,11 @@ class AppState extends ChangeNotifier {
   }
 
   @visibleForTesting
+  void setSkipMoveConfirmationForTesting(bool v) {
+    _skipMoveConfirmation = v;
+  }
+
+  @visibleForTesting
   Future<void> playReadyChimeForTesting() async {
     if (!_readyAudioEnabled) return;
     await audio?.playReady(volume: _readyAudioVolume);
