@@ -5,9 +5,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:atriarch/state/app_state.dart';
 import 'package:atriarch/state/shooter_state.dart';
 import 'package:atriarch/theme/atriarch_theme.dart';
+import 'package:atriarch/repositories/drill_template_repository.dart';
 import 'package:atriarch/screens/program_a_setup_screen.dart';
+import 'package:atriarch/services/preferences_repository.dart';
 import 'package:atriarch/widgets/tactical/group_node_card.dart';
 import 'package:atriarch/widgets/tactical/tactical_min_max_card.dart';
+import '../test_helpers/fake_drill_template_repository.dart';
+import '../test_helpers/fake_preferences_repository.dart';
 import '../test_helpers/fake_shooter_repo.dart';
 
 void main() {
@@ -25,6 +29,12 @@ void main() {
         providers: [
           ChangeNotifierProvider<AppState>(create: (_) => AppState()),
           ChangeNotifierProvider<ShooterState>.value(value: shooterState),
+          Provider<DrillTemplateRepository>.value(
+            value: FakeDrillTemplateRepository(),
+          ),
+          Provider<PreferencesRepository>.value(
+            value: FakePreferencesRepository(),
+          ),
         ],
         child: MaterialApp(
           theme: buildAtriarchDarkTheme(),
