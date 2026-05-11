@@ -187,8 +187,7 @@ class AppState extends ChangeNotifier {
     _onboardingComplete = await prefs.isOnboardingComplete();
     _readyAudioEnabled = await prefs.isReadyAudioEnabled();
     _readyAudioVolume = await prefs.getReadyAudioVolume();
-    _skipMoveConfirmation =
-        await preferences?.getSkipMoveConfirmation() ?? false;
+    _skipMoveConfirmation = await prefs.getSkipMoveConfirmation();
     notifyListeners();
   }
 
@@ -259,8 +258,8 @@ class AppState extends ChangeNotifier {
 
   Future<void> setSkipMoveConfirmation(bool v) async {
     _skipMoveConfirmation = v;
-    notifyListeners();
     await preferences?.setSkipMoveConfirmation(v);
+    notifyListeners();
   }
 
   @visibleForTesting
