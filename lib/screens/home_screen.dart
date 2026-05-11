@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
 import '../theme/atriarch_theme.dart';
-import '../util/target_name_resolver.dart';
 import '../widgets/tactical/tactical_card.dart';
 import '../widgets/tactical/tactical_primary_button.dart';
 import '../widgets/tactical/tactical_scaffold.dart';
@@ -120,14 +119,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   Future<void> _startWalkTheRange(BuildContext context) async {
-    final state = context.read<AppState>();
-    final resolver = TargetNameResolver(state.targetNames);
-    for (final target in state.targets.where((t) => t.isOnline)) {
-      final name = resolver.display(target.id);
-      await state.tts?.speak(name);
-      await state.identifyTarget(target.id);
-      await Future<void>.delayed(const Duration(seconds: 2));
-    }
+    await context.read<AppState>().walkTheRange();
   }
 }
 
