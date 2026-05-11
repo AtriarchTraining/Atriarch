@@ -68,6 +68,7 @@ class AppState extends ChangeNotifier {
   bool _discoveryDoneSeenForCurrentCycle = false;
   bool _readyAudioEnabled = true;
   double _readyAudioVolume = 1.0;
+  bool _skipMoveConfirmation = false;
 
   Map<int, String> get targetNames => Map.unmodifiable(_targetNames);
   Set<int> get removedTargetIds => Set.unmodifiable(_removedTargetIds);
@@ -75,6 +76,7 @@ class AppState extends ChangeNotifier {
   bool get onboardingComplete => _onboardingComplete;
   bool get readyAudioEnabled => _readyAudioEnabled;
   double get readyAudioVolume => _readyAudioVolume;
+  bool get skipMoveConfirmation => _skipMoveConfirmation;
 
   // --- Phase machine + telemetry (plan-1) ---
   DrillPhase _phase = DrillPhase.idle;
@@ -185,6 +187,8 @@ class AppState extends ChangeNotifier {
     _onboardingComplete = await prefs.isOnboardingComplete();
     _readyAudioEnabled = await prefs.isReadyAudioEnabled();
     _readyAudioVolume = await prefs.getReadyAudioVolume();
+    _skipMoveConfirmation =
+        await preferences?.getSkipMoveConfirmation() ?? false;
     notifyListeners();
   }
 
@@ -251,6 +255,12 @@ class AppState extends ChangeNotifier {
     _readyAudioVolume = clamped;
     await preferences?.setReadyAudioVolume(clamped);
     notifyListeners();
+  }
+
+  Future<void> setSkipMoveConfirmation(bool v) async {
+    _skipMoveConfirmation = v;
+    notifyListeners();
+    await preferences?.setSkipMoveConfirmation(v);
   }
 
   @visibleForTesting
