@@ -226,9 +226,17 @@ void readBle() {
         handleDiscovery();
         serialPos = 0;
       } else if (strncmp(serialBuf, "IDENT/", 6) == 0) {
-        Serial.println("[CMD] IDENT/ received");
-        handleIdentify();
-        serialPos = 0;
+        // IDENT/<id>/ has TWO '/'. The strncmp would match on the first '/'
+        // (right after "IDENT") which fires before the id is in the buffer
+        // and ends up sending CMD_IDENTIFY with addr=0 (dropped). Wait until
+        // we've seen the second '/'.
+        int slashes = 0;
+        for (int i = 0; serialBuf[i]; i++) if (serialBuf[i] == '/') slashes++;
+        if (slashes >= 2) {
+          Serial.println("[CMD] IDENT/ received");
+          handleIdentify();
+          serialPos = 0;
+        }
       } else if (strncmp(serialBuf, "STOP/", 5) == 0) {
         Serial.println("[CMD] STOP/ received");
         handleStop();
