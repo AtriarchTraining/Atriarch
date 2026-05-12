@@ -17,7 +17,7 @@
 //            011, 021, 031, 041, 051 (level 2, children of 01)
 //            012, 022, 032, 042, 052 (level 2, children of 02)
 //            etc.
-#define NODE_ADDRESS    02  // <-- CHANGE THIS PER TARGET
+#define NODE_ADDRESS    02  // <-- CHANGE PER TARGET (octal: 01=Target 1, 02=Target 2, 03=Target 3)
 
 // --- Command Constants (transmitter -> target) ---
 #define CMD_ACTIVATE    1
